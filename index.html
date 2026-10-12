@@ -25,8 +25,8 @@ $('devices').onclick=()=>{$('panel').classList.add('open');render()};$('back').o
 const touchDiag=document.createElement('div');
 touchDiag.id='touch-diag';
 touchDiag.setAttribute('aria-live','polite');
-touchDiag.style.cssText='position:fixed;top:7px;left:50%;transform:translateX(-50%);z-index:99999;background:#061326ee;color:#f5d16a;border:1px solid #d8a949;border-radius:6px;padding:6px 12px;font:14px Arial,sans-serif;pointer-events:none;max-width:85vw;white-space:nowrap';
-touchDiag.textContent='TOUCH TEST: afventer tryk';
+touchDiag.style.cssText='position:fixed;top:7px;left:50%;transform:translateX(-50%);z-index:99999;background:#061326ee;color:#f5d16a;border:1px solid #d8a949;border-radius:6px;padding:6px 12px;font:14px Arial,sans-serif;pointer-events:none;max-width:98vw;white-space:nowrap;font-size:12px';
+touchDiag.textContent='v3d9 TOUCH TEST: afventer tryk';
 document.body.appendChild(touchDiag);
 const touchCounts={pointerdown:0,touchstart:0,click:0};
 let lastTouchAction=0;
@@ -47,7 +47,10 @@ function touchReport(event){
  const hit=touchButtonAt(x,y);
  const element=Number.isFinite(x)&&Number.isFinite(y)?document.elementFromPoint(x,y):null;
  const label=actual?actual.id:hit?'hit:'+hit.id:'skærm';
- touchDiag.textContent='TOUCH '+event.type+' #'+touchCounts[event.type]+' · '+label+' · '+Math.round(x||0)+','+Math.round(y||0)+' · '+(element?element.tagName.toLowerCase():'?');
+ const d=$('devices').getBoundingClientRect();
+ const deviceBox=[Math.round(d.left),Math.round(d.top),Math.round(d.right),Math.round(d.bottom)].join(',');
+ const touchPoint=Math.round(x||0)+','+Math.round(y||0);
+ touchDiag.textContent='v3d9 · '+event.type+' #'+touchCounts[event.type]+' · '+label+' · '+touchPoint+' · ENHEDER['+deviceBox+'] · '+(element?element.tagName.toLowerCase():'?');
  // Only activate a button if the actual touch coordinates fall inside its visible rectangle.
  // Deduplicate touchstart/pointerdown and prevent ghost clicks.
  if((event.type==='touchstart'||event.type==='pointerdown')&&hit&&Date.now()-lastTouchAction>650){
