@@ -29,12 +29,34 @@ touchDiag.style.cssText='position:fixed;top:7px;left:50%;transform:translateX(-5
 touchDiag.textContent='TOUCH TEST: afventer tryk';
 document.body.appendChild(touchDiag);
 const touchCounts={pointerdown:0,touchstart:0,click:0};
+let lastTouchAction=0;
+function touchButtonAt(x,y){
+ if(!Number.isFinite(x)||!Number.isFinite(y))return null;
+ for(const id of ['devices','assistant','rest','back']){
+  const btn=$(id);if(!btn||!btn.getClientRects().length)continue;
+  const r=btn.getBoundingClientRect();
+  if(x>=r.left&&x<=r.right&&y>=r.top&&y<=r.bottom)return btn;
+ }
+ return null;
+}
+function touchReport(event){
+ touchCounts[event.type]++;
+ const point=event.changedTouches&&event.changedTouches[0]||event;
+ const x=point.clientX,y=point.clientY;
+ const actual=event.target&&event.target.closest?event.target.closest('button'):null;
+ const hit=touchButtonAt(x,y);
+ const element=Number.isFinite(x)&&Number.isFinite(y)?document.elementFromPoint(x,y):null;
+ const label=actual?actual.id:hit?'hit:'+hit.id:'skærm';
+ touchDiag.textContent='TOUCH '+event.type+' #'+touchCounts[event.type]+' · '+label+' · '+Math.round(x||0)+','+Math.round(y||0)+' · '+(element?element.tagName.toLowerCase():'?');
+ // Only activate a button if the actual touch coordinates fall inside its visible rectangle.
+ // Deduplicate touchstart/pointerdown and prevent ghost clicks.
+ if((event.type==='touchstart'||event.type==='pointerdown')&&hit&&Date.now()-lastTouchAction>650){
+  lastTouchAction=Date.now();
+  hit.click();
+ }
+}
 for(const eventName of Object.keys(touchCounts)){
- document.addEventListener(eventName,event=>{
-  touchCounts[eventName]++;
-  const target=event.target&&event.target.closest?event.target.closest('button'):null;
-  touchDiag.textContent='TOUCH '+eventName+' #'+touchCounts[eventName]+' · '+(target?target.id:'skærm');
- },{capture:true,passive:true});
+ document.addEventListener(eventName,touchReport,{capture:true,passive:true});
 }
 tick();setInterval(tick,15000);
 try{if(!window.cast||!cast.framework)throw Error('Cast SDK unavailable');const ctx=cast.framework.CastReceiverContext.getInstance();ctx.addCustomMessageListener('urn:x-cast:dk.kalivhub.lab',event=>{if(event&&event.data)snapshot(event.data)});ctx.start({uiConfig:{touchScreenOptimizedApp:true}});$('connection').textContent='Receiver klar · afventer data'}catch{$('connection').textContent='Cast SDK ikke tilgængeligt'}
