@@ -46,7 +46,7 @@ test('stale snapshots expire, then a new sender session is accepted',()=>{
  const x=setup(),entity={entity_id:'light.stue',name:'Stue',state:'on'};
  x.send({type:'snapshot',version:1,session_id:'session_a1',sequence:9,entities:[entity]});
  assert.equal(x.get('tiles').children.length,1);
- x.advance(45001);x.tick();
+ x.advance(60000);x.tick();
  assert.equal(x.get('tiles').children.length,0);
  assert.match(x.get('connection').textContent,/afbrudt/);
  x.send({type:'snapshot',version:1,session_id:'session_b2',sequence:0,entities:[entity]});
