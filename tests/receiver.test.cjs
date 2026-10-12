@@ -47,7 +47,7 @@ test('stale snapshots expire, then a new sender session is accepted',()=>{
  x.send({type:'snapshot',version:1,session_id:'session_a1',sequence:9,entities:[entity]});
  assert.equal(x.get('tiles').children.length,1);
  x.advance(60000);x.tick();
- assert.equal(x.get('tiles').children.length,0);
+ assert.match(x.get('tiles').children[0].textContent,/Ingen godkendte/);
  assert.match(x.get('connection').textContent,/afbrudt/);
  x.send({type:'snapshot',version:1,session_id:'session_b2',sequence:0,entities:[entity]});
  assert.equal(x.get('tiles').children.length,1);
@@ -55,7 +55,7 @@ test('stale snapshots expire, then a new sender session is accepted',()=>{
 test('invalid state does not replace a valid tile',()=>{
  const x=setup(),entity={entity_id:'light.stue',name:'Stue',state:'on'};
  x.send({type:'snapshot',version:1,entities:[entity]});
- x.send({type:'snapshot',version:1,entities:[{...entity,name:'bad\\nname'}]});
+ x.send({type:'snapshot',version:1,entities:[{...entity,name:'bad'+String.fromCharCode(10)+'name'}]});
  assert.equal(x.get('tiles').children[0].children[0].textContent,'Stue');
  x.send({type:'snapshot',version:1,entities:Array.from({length:33},(_,i)=>({...entity,entity_id:'light.l'+i}))});
  assert.equal(x.get('tiles').children.length,1);
