@@ -12,6 +12,7 @@ function setup(){
  const get=id=>{if(!elements.has(id))elements.set(id,node());return elements.get(id)};
  let listener;let time=1000;let interval;
  const ctx={document:{getElementById:get,createElement:()=>node()},cast:{framework:{CastReceiverContext:{getInstance:()=>({addCustomMessageListener(ns,fn){assert.equal(ns,'urn:x-cast:dk.kalivhub.lab');listener=fn},start(){}})}}},Date:class extends Date{constructor(...args){super(...(args.length?args:[time]))}static now(){return time}},setInterval:fn=>{interval=fn},console};
+ ctx.window=ctx;
  vm.runInNewContext(script,ctx,{timeout:1000});
  return {send:data=>listener({data}),get,advance:ms=>{time+=ms;vm.runInNewContext('void 0',ctx)},tick:()=>interval()};
 }
