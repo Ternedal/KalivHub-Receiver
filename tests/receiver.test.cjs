@@ -31,7 +31,9 @@ test('sequence replay, live session change, malformed fields are rejected',()=>{
  assert.equal(x.get('tiles').children.length,1);
  x.send({type:'snapshot',version:1,session_id:'session_a1',entities:[]});
  assert.equal(x.get('tiles').children.length,1);
- x.send({type:'snapshot',version:1,entities:[]});\n assert.equal(x.get('tiles').children.length,1);\n x.send({type:'snapshot',version:2,entities:[]});
+ x.send({type:'snapshot',version:1,entities:[]});
+ assert.equal(x.get('tiles').children.length,1);
+ x.send({type:'snapshot',version:2,entities:[]});
  assert.equal(x.get('tiles').children.length,1);
 });
 test('HTML-like names are treated as text, never markup',()=>{
