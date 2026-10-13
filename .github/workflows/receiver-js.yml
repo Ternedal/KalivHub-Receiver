@@ -12,4 +12,4 @@ jobs:
         with:
           node-version: '22'
       - name: Validate receiver inline JavaScript
-        run: node tests/receiver-syntax.cjs
+        run: |\n          node tests/receiver-syntax.cjs\n          node tests/receiver-behavior.cjs
