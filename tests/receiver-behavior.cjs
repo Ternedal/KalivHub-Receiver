@@ -1,6 +1,6 @@
 const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
 const html=fs.readFileSync('index.html','utf8');
-const script=[...html.matchAll(/<script(?:\\s[^>]*)?>([\\s\\S]*?)<\\/script>/gi)].map(x=>x[1]).find(x=>x.trim());
+const script=[...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/gi)].map(x=>x[1]).find(x=>x.trim());
 assert.ok(script,'inline script exists');
 function element(id=''){
  const attributes={};const el={id,children:[],dataset:{},className:'',textContent:'',onclick:null,onkeydown:null,style:{},classList:{_v:new Set(),add(x){this._v.add(x)},remove(x){this._v.delete(x)},contains(x){return this._v.has(x)}},
