@@ -8,13 +8,13 @@ function element(id=''){
 }
 function harness(){
  const ids=new Map();const get=id=>{if(!ids.has(id))ids.set(id,element(id));return ids.get(id)};
- const listeners={};const sent=[];let now=100000;const ctx={addCustomMessageListener(ns,fn){listeners[ns]=fn},sendCustomMessage(ns,to,data){sent.push({ns,to,data})},start(){}};
+ const listeners={};const sent=[];let now=100000;let scheduledTick=null;const ctx={addCustomMessageListener(ns,fn){listeners[ns]=fn},sendCustomMessage(ns,to,data){sent.push({ns,to,data})},start(){}};
  const DateMock=class extends Date{constructor(...a){super(...(a.length?a:[now]))}static now(){return now}};
- const context={document:{getElementById:get,createElement:()=>element(),addEventListener(){}},window:{cast:{framework:{}}},cast:{framework:{CastReceiverContext:{getInstance:()=>ctx}}},Date:DateMock,setInterval(){},console,Math};
+ const context={document:{getElementById:get,createElement:()=>element(),addEventListener(){}},window:{cast:{framework:{}}},cast:{framework:{CastReceiverContext:{getInstance:()=>ctx}}},Date:DateMock,setInterval(fn){scheduledTick=fn},console,Math};
  vm.runInNewContext(script,context,{filename:'receiver-inline.js'});
  const receive=(data,senderId='sender-1')=>listeners['urn:x-cast:dk.kalivhub.lab']({data,senderId});
  const snapshot=(sequence,session_id='session1234',state='off')=>receive({type:'snapshot',version:1,sequence,session_id,entities:[{entity_id:'light.kitchen',name:'Kitchen',state}]});
- return {get,receive,snapshot,sent,setNow:v=>{now=v},tick:()=>{ /* trigger stale through new Date requires interval callback */}};
+ return {get,receive,snapshot,sent,setNow:v=>{now=v},tick:()=>scheduledTick?.()};
 }
 {
  const h=harness();h.receive({type:'control_capabilities',version:1,enabled:true});assert.equal(h.get('devices').querySelector('small').textContent,'Kun visning','capabilities alone cannot enable controls');
@@ -28,5 +28,15 @@ function harness(){
  const h=harness();h.snapshot(1);h.receive({type:'control_capabilities',version:1,enabled:true});h.snapshot(1,'session1234','on');assert.equal(h.get('tiles').children[0].textContent,'');assert.equal(h.get('tiles').children[0].children[1].textContent,'off','duplicate sequence ignored');
  h.snapshot(2,'bad!','on');assert.equal(h.get('tiles').children[0].children[1].textContent,'off','invalid session rejected');
  h.snapshot(1,'another123','on');assert.equal(h.get('tiles').children[0].children[1].textContent,'on','new session accepted');assert.equal(h.get('tiles').children[0].getAttribute('role'),null,'new session revokes controls');
+}
+{
+ const h=harness();h.snapshot(1);h.receive({type:'control_capabilities',version:1,enabled:true});
+ assert.equal(h.get('tiles').children[0].getAttribute('role'),'button');
+ h.setNow(146000);h.tick();
+ assert.equal(h.get('tiles').children[0].getAttribute('role'),null,'stale snapshot revokes control');
+ h.receive({type:'control_capabilities',version:1,enabled:true});
+ assert.equal(h.get('tiles').children[0].getAttribute('role'),null,'capabilities alone cannot re-enable stale controls');
+ h.snapshot(2);h.receive({type:'control_capabilities',version:1,enabled:true});
+ assert.equal(h.get('tiles').children[0].getAttribute('role'),'button','fresh snapshot restores controls');
 }
 console.log('Receiver behavior checks OK');
