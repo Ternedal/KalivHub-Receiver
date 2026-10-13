@@ -41,7 +41,7 @@ function handleTouch(event){
  if(!hit||Date.now()-lastTouchAction<650)return;
  lastTouchAction=Date.now();
  hit.click();
- $('subtitle').textContent='Touch: '+hit.id;
+
 }
 document.addEventListener('touchstart',handleTouch,{capture:true,passive:true});
 document.addEventListener('touchend',handleTouch,{capture:true,passive:true});
