@@ -24,7 +24,7 @@ function requestControl(item){
  if(!controlsEnabled||!senderId||!castContext||Date.now()-lastMessage>45000)return;
  if(!/^(light|switch|input_boolean)\.[a-z0-9_]{1,120}$/.test(item.entity_id))return;
  if(item.state!=='on'&&item.state!=='off')return;
- if(pendingControls.has(item.entity_id))return;
+ const previous=pendingControls.get(item.entity_id);if(previous){if(Date.now()-previous.at<15000)return;pendingControls.delete(item.entity_id)}
  const action=item.state==='on'?'turn_off':'turn_on';
  const request_id='tap-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,12);
  try{
