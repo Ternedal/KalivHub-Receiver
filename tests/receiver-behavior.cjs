@@ -27,6 +27,7 @@ function harness(){
 {
  const h=harness();h.snapshot(1);h.receive({type:'control_capabilities',version:1,enabled:true});h.snapshot(1,'session1234','on');assert.equal(h.get('tiles').children[0].textContent,'');assert.equal(h.get('tiles').children[0].children[1].textContent,'off','duplicate sequence ignored');
  h.snapshot(2,'bad!','on');assert.equal(h.get('tiles').children[0].children[1].textContent,'off','invalid session rejected');
+ h.receive({type:'snapshot',version:1,entities:[{entity_id:'light.kitchen',name:'Kitchen',state:'on'}]});assert.equal(h.get('tiles').children[0].children[1].textContent,'off','unsequenced snapshot rejected');
  h.snapshot(1,'another123','on');assert.equal(h.get('tiles').children[0].children[1].textContent,'on','new session accepted');assert.equal(h.get('tiles').children[0].getAttribute('role'),null,'new session revokes controls');
 }
 {
