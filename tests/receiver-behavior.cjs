@@ -40,4 +40,13 @@ function harness(){
  h.snapshot(2);h.receive({type:'control_capabilities',version:1,enabled:true});
  assert.equal(h.get('tiles').children[0].getAttribute('role'),'button','fresh snapshot restores controls');
 }
+{
+ const h=harness();h.snapshot(1);
+ h.receive({type:'control_capabilities',version:1,enabled:true},'different-sender');
+ assert.equal(h.get('tiles').children[0].getAttribute('role'),null,'other sender cannot enable controls');
+ h.receive({type:'control_capabilities',version:1,enabled:true},'sender-1');
+ assert.equal(h.get('tiles').children[0].getAttribute('role'),'button','snapshot sender can enable controls');
+ h.receive({type:'snapshot',version:1,sequence:1,session_id:'other12345',entities:[{entity_id:'light.kitchen',name:'Kitchen',state:'on'}]},'different-sender');
+ assert.equal(h.get('tiles').children[0].getAttribute('role'),null,'sender switch revokes controls');
+}
 console.log('Receiver behavior checks OK');
