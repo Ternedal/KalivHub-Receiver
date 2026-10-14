@@ -15,6 +15,7 @@ jobs:
           test -s mic-diagnostic.html
           node --check tests/mic-probe-static.cjs
           node tests/mic-probe-static.cjs
+          node tests/mic-probe-behavior.cjs
       - name: Package only diagnostic receiver
         run: |
           mkdir -p dist
