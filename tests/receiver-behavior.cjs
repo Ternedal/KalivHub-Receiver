@@ -111,4 +111,13 @@ function harness(){
  assert.equal(h.get('tiles').children[1].dataset.room,'Soveværelse','second room heading');
  assert.equal(h.get('tiles').children[2].dataset.room,undefined,'room heading not repeated');
 }
+{
+ const h=harness();
+ h.receive({type:'snapshot',version:1,sequence:1,session_id:'session1234',entities:[
+  {entity_id:'climate.living',name:'Varme',state:'heat',room:'Stue',current_temperature:21,temperature:23}
+ ]});
+ const tile=h.get('tiles').children[0];
+ assert.equal(tile.children[2].textContent,'Nu 21 °C · Mål 23 °C','climate current and target shown');
+ assert.equal(tile.getAttribute('role'),null,'climate control remains read-only');
+}
 console.log('Receiver behavior checks OK');
