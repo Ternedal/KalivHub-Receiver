@@ -31,6 +31,7 @@ async function stop(){
 }
 $('stop').addEventListener('click',()=>{void stop()});
 $('start').addEventListener('click',async()=>{
+ if($('start').disabled)return;
  $('start').disabled=true;$('stop').disabled=false;
  const requestId=++generation;peak=0;frames=0;
  timeout=setTimeout(()=>{if(requestId!==generation)return;log('Tidsgrænse','10 sekunder');void stop()},10000);
