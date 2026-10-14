@@ -37,3 +37,9 @@ Record the Nest Hub generation, firmware version, Cast test App ID (non-secret),
 ## Evidence to capture
 
 At the end of a successful stream, the diagnostic reports the number of local audio-meter frames and its highest measured level (0–100). A zero peak with frames present suggests silence or inaccessible audio; it is not proof of a functioning microphone. Record these two numbers along with the stream's live-track result. The report contains no audio samples.
+
+## Quickest manual launch path
+
+After registering the **separate** diagnostic receiver App ID, a local machine with Python and `pychromecast` can launch it without Home Assistant or ModelRig. The diagnostic sender is intentionally kept separate from the production sender. Run `python -m pip install pychromecast` and use `python tools/launch_mic_probe.py --app-id YOUR_TEST_APP_ID --host NEST_HUB_IP`. The receiver URL must already be hosted and registered; this script cannot register Cast apps, enable GitHub Pages, or grant microphone permissions.
+
+Only run on a trusted local network. The sender does not transmit credentials or audio.
