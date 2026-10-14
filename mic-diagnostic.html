@@ -57,7 +57,7 @@ $('start').addEventListener('click',async()=>{
    source=ctx.createMediaStreamSource(stream);
    analyser=ctx.createAnalyser();analyser.fftSize=1024;source.connect(analyser);
    const values=new Uint8Array(analyser.fftSize);
-   const meter=()=>{if(!analyser)return;analyser.getByteTimeDomainData(values);
+   const meter=()=>{if(requestId!==generation||!analyser)return;analyser.getByteTimeDomainData(values);
      let sum=0;for(const v of values){const d=(v-128)/128;sum+=d*d}
      const rms=Math.sqrt(sum/values.length);const level=Math.min(100,Math.round(rms*350));frames++;peak=Math.max(peak,level);
      $('level').style.width=level+'%';$('meter').setAttribute('aria-valuenow',String(level));
