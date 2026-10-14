@@ -168,4 +168,5 @@ function harness(){
  ]});
  assert.match(h.get('tiles').children[0].children[2].textContent,/offline/,'offline camera clearly marked');
 }
+// The PR gate also exercises thermostat requests against the current receiver main.
 console.log('Receiver behavior checks OK');
