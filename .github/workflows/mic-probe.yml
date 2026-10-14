@@ -29,6 +29,7 @@ jobs:
         run: |
           mkdir -p dist
           cp mic-diagnostic.html dist/index.html
+          node tests/mic-probe-package.cjs
       - uses: actions/upload-artifact@v4
         with:
           name: kalivhub-nest-mic-probe
