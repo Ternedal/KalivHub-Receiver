@@ -142,5 +142,13 @@ function harness(){
  tile.children[4].click();
  assert.equal(h.sent[0].data.action,'set_temperature');
  assert.equal(h.sent[0].data.temperature,22.5,'temperature increments by half degree');
+ tile.children[4].click();
+ assert.equal(h.sent.length,1,'rapid repeat temperature taps suppressed');
+ h.receive({type:'snapshot',version:1,sequence:2,session_id:'session1234',entities:[
+  {entity_id:'climate.living',name:'Varme',state:'heat',room:'Stue',current_temperature:21,temperature:22.5}
+ ]});
+ h.get('tiles').children[0].children[4].click();
+ assert.equal(h.sent.length,2,'confirmed temperature permits next adjustment');
+ assert.equal(h.sent[1].data.temperature,23,'next adjustment uses confirmed target');
 }
 console.log('Receiver behavior checks OK');
