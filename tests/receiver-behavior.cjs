@@ -17,7 +17,7 @@ function harness(){
  return {get,receive,snapshot,sent,setNow:v=>{now=v},failDelivery:v=>{deliveryFailure=v},deferFailure:v=>{deferredFailure=v},rejectDelayed:()=>delayedReject?.(new Error('offline')),tick:()=>scheduledTick?.()};
 }
 {
- const h=harness();h.receive({type:'control_capabilities',version:1,enabled:true});assert.equal(h.get('devices').querySelector('small').textContent,'Kun visning','capabilities alone cannot enable controls');
+ const h=harness();h.receive({type:'control_capabilities',version:1,enabled:true});assert.equal(h.get('devices').querySelector('small').textContent,'','capabilities without snapshot cannot change default UI');
  h.snapshot(1);h.receive({type:'control_capabilities',version:1,enabled:true});assert.equal(h.get('tiles').children[0].getAttribute('role'),'button');
  h.get('tiles').children[0].click();assert.equal(h.sent.length,1);assert.equal(h.sent[0].data.action,'turn_on');
  h.get('tiles').children[0].click();assert.equal(h.sent.length,1,'repeated tap suppressed');
