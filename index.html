@@ -33,7 +33,7 @@ function requestControl(item){
   $('connection').textContent='Kommando sendt · afventer status';
   // CAF may reject asynchronously when the sender disconnects mid-tap.
   if(delivery&&typeof delivery.catch==='function')delivery.catch(()=>{
-   if(pendingControls.get(item.entity_id)?.request_id===request_id){pendingControls.delete(item.entity_id);$('connection').textContent='Kunne ikke sende kommando';render()}
+   if(pendingControls.get(item.entity_id)?.request_id===request_id&&controlsEnabled&&senderId===snapshotSenderId&&Date.now()-lastMessage<=45000){pendingControls.delete(item.entity_id);$('connection').textContent='Kunne ikke sende kommando';render()}
   });
  }catch{$('connection').textContent='Kunne ikke sende kommando'}
 }
