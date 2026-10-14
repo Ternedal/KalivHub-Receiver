@@ -161,4 +161,11 @@ function harness(){
  ]});
  assert.equal(h.get('tiles').children[0].children[2].textContent,'Mål 22 °C','invalid climate snapshot rejected');
 }
+{
+ const h=harness();
+ h.receive({type:'snapshot',version:1,sequence:1,session_id:'session1234',entities:[
+  {entity_id:'camera.front_door',name:'Hoveddør',state:'unavailable',room:'Entré'}
+ ]});
+ assert.match(h.get('tiles').children[0].children[2].textContent,/offline/,'offline camera clearly marked');
+}
 console.log('Receiver behavior checks OK');
