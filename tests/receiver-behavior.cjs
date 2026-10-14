@@ -130,4 +130,17 @@ function harness(){
  assert.match(tile.children[2].textContent,/livevisning kræver sikker streamforbindelse/,'camera stream limitation visible');
  assert.equal(tile.getAttribute('role'),null,'camera is not an unsafe control');
 }
+{
+ const h=harness();
+ h.receive({type:'snapshot',version:1,sequence:1,session_id:'session1234',entities:[
+  {entity_id:'climate.living',name:'Varme',state:'heat',room:'Stue',current_temperature:21,temperature:22}
+ ]});
+ assert.equal(h.get('tiles').children[0].children.length,3,'thermostat read-only before capability');
+ h.receive({type:'control_capabilities',version:1,enabled:true});
+ const tile=h.get('tiles').children[0];
+ assert.equal(tile.children.length,5,'thermostat buttons appear only with opt-in');
+ tile.children[4].click();
+ assert.equal(h.sent[0].data.action,'set_temperature');
+ assert.equal(h.sent[0].data.temperature,22.5,'temperature increments by half degree');
+}
 console.log('Receiver behavior checks OK');
