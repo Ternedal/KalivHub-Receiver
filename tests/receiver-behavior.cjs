@@ -120,4 +120,14 @@ function harness(){
  assert.equal(tile.children[2].textContent,'Nu 21 °C · Mål 23 °C','climate current and target shown');
  assert.equal(tile.getAttribute('role'),null,'climate control remains read-only');
 }
+{
+ const h=harness();
+ h.receive({type:'snapshot',version:1,sequence:1,session_id:'session1234',entities:[
+  {entity_id:'camera.front_door',name:'Hoveddør',state:'idle',room:'Entré'}
+ ]});
+ const tile=h.get('tiles').children[0];
+ assert.equal(tile.dataset.room,'Entré','camera grouped in assigned room');
+ assert.match(tile.children[2].textContent,/livevisning kræver sikker streamforbindelse/,'camera stream limitation visible');
+ assert.equal(tile.getAttribute('role'),null,'camera is not an unsafe control');
+}
 console.log('Receiver behavior checks OK');
