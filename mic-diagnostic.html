@@ -14,10 +14,11 @@ body{max-width:850px;margin:0 auto;padding:28px}h1{color:#8bbaff}button{font:inh
 <script>
 (()=>{'use strict';
 const $=id=>document.getElementById(id);
-let stream=null,ctx=null,analyser=null,source=null,raf=0,timeout=0;
+let stream=null,ctx=null,analyser=null,source=null,raf=0,timeout=0,generation=0;
 const log=(label,value)=>{$('status').textContent+=label+': '+String(value)+'\n'};
 const reset=()=>{$('level').style.width='0%';$('meter').setAttribute('aria-valuenow','0')};
 async function stop(){
+ generation++;
  clearTimeout(timeout);cancelAnimationFrame(raf);raf=0;
  if(stream){stream.getTracks().forEach(t=>t.stop());stream=null}
  try{if(source)source.disconnect()}catch{}
@@ -29,6 +30,8 @@ async function stop(){
 $('stop').addEventListener('click',()=>{void stop()});
 $('start').addEventListener('click',async()=>{
  $('start').disabled=true;$('stop').disabled=false;
+ const requestId=++generation;
+ timeout=setTimeout(()=>{log('Tidsgrænse','10 sekunder');void stop()},10000);
  $('status').textContent='';
  log('Sikker kontekst',window.isSecureContext);
  log('Cast receiver SDK',Boolean(window.cast&&window.cast.framework));
@@ -36,7 +39,9 @@ $('start').addEventListener('click',async()=>{
  log('getUserMedia',typeof navigator.mediaDevices?.getUserMedia);
  if(!navigator.mediaDevices?.getUserMedia){log('Resultat','API ikke tilgængelig');await stop();return}
  try{
-   stream=await navigator.mediaDevices.getUserMedia({audio:true,video:false});
+   const obtained=await navigator.mediaDevices.getUserMedia({audio:true,video:false});
+   if(requestId!==generation){obtained.getTracks().forEach(t=>t.stop());return}
+   stream=obtained;
    log('Tilladelse','Mikrofonstream oprettet');
    log('Lydspor',stream.getAudioTracks().length);
    const AudioContextClass=window.AudioContext||window.webkitAudioContext;
@@ -49,8 +54,8 @@ $('start').addEventListener('click',async()=>{
      const rms=Math.sqrt(sum/values.length);const level=Math.min(100,Math.round(rms*350));
      $('level').style.width=level+'%';$('meter').setAttribute('aria-valuenow',String(level));
      raf=requestAnimationFrame(meter)};
-   meter();timeout=setTimeout(()=>{log('Tidsgrænse','10 sekunder');void stop()},10000);
- }catch(err){log('Fejltype',err?.name||'Ukendt');log('Fejlbesked',err?.message||'Ingen detaljer');await stop()}
+   meter();
+ }catch(err){if(requestId!==generation)return;log('Fejltype',err?.name||'Ukendt');log('Fejlbesked',err?.message||'Ingen detaljer');await stop()}
 });
 // Start a real Custom Web Receiver session when this page is registered
 // as the Cast receiver URL. This diagnostic never sends Cast messages.
