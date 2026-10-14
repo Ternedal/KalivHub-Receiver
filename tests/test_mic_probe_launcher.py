@@ -82,7 +82,7 @@ class LauncherTests(unittest.TestCase):
                 state.append("disconnect")
         code, _, err = self.invoke(
             ["--host", "192.168.1.10", "--app-id", "ABCD1234"],
-            types.SimpleNamespace(Chromecast=Cast),
+            types.SimpleNamespace(get_chromecast_from_host=lambda host: Cast(host)),
         )
         self.assertEqual(code, 1)
         self.assertIn("Cast launch failed", err)
