@@ -35,5 +35,6 @@ async function flush(){for(let i=0;i<5;i++)await Promise.resolve()}
  await flush();
  assert.equal(tracksStopped,1,'late microphone permission stream must be stopped');
  assert.equal(element('start').disabled,false);
+ assert.match(element('status').textContent,/Mikrofon stoppet/);
  console.log('PASS: timeout cancels pending capture and closes late stream');
 })().catch(e=>{console.error(e);process.exitCode=1});
