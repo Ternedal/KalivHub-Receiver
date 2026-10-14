@@ -33,6 +33,11 @@ class LauncherTests(unittest.TestCase):
             self.invoke(["--host", "127.0.0.1", "--app-id", "ABCD1234"])
         self.assertEqual(raised.exception.code, 2)
 
+    def test_dry_run_needs_no_cast_dependency(self):
+        code, out, err = self.invoke(["--host", "192.168.1.10", "--app-id", "ABCD1234", "--dry-run"])
+        self.assertEqual(code, 0, err)
+        self.assertIn("No Cast connection attempted", out)
+
     def test_launch_and_disconnect(self):
         state = []
         class Receiver:
