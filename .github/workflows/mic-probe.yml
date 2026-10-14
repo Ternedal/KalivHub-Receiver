@@ -20,6 +20,7 @@ jobs:
           node tests/mic-probe-empty-stream.cjs
           node tests/mic-probe-stale-timeout.cjs
           node tests/mic-probe-manual-stop.cjs
+          node tests/mic-probe-stale-meter.cjs
       - name: Check Python Cast launcher
         run: |
           python -m compileall -q tools/launch_mic_probe.py tests/test_mic_probe_launcher.py
