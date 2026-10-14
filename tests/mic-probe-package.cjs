@@ -2,6 +2,8 @@
 const fs=require('node:fs'),assert=require('node:assert/strict'),crypto=require('node:crypto');
 const source=fs.readFileSync('mic-diagnostic.html');
 const packaged=fs.readFileSync('dist/index.html');
+const staged=fs.readFileSync('mic-test/index.html');
+assert.deepEqual(staged,source,'staged mic-test page must match diagnostic source byte-for-byte');
 assert.deepEqual(packaged,source,'packaged receiver must match diagnostic source byte-for-byte');
 const html=packaged.toString('utf8');
 assert.match(html,/KalivHub · Mikrofon-diagnose/);
