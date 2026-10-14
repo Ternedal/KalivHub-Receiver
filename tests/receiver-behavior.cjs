@@ -57,4 +57,13 @@ function harness(){
  h.failDelivery(false);h.get('tiles').children[0].click();
  assert.equal(h.sent.length,2,'failed delivery does not lock out retries');
 }
+{
+ const h=harness();h.snapshot(1);
+ const duplicate={entity_id:'light.kitchen',name:'Kitchen',state:'on'};
+ h.receive({type:'snapshot',version:1,session_id:'session1234',sequence:2,entities:[duplicate,duplicate]});
+ assert.equal(h.get('tiles').children.length,1,'duplicate entity IDs rejected');
+ assert.equal(h.get('tiles').children[0].children[1].textContent,'off','invalid snapshot does not overwrite state');
+ h.snapshot(2,'session1234','on');
+ assert.equal(h.get('tiles').children[0].children[1].textContent,'on','rejected snapshot does not advance sequence');
+}
 console.log('Receiver behavior checks OK');
