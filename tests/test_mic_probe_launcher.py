@@ -23,6 +23,16 @@ class LauncherTests(unittest.TestCase):
             self.invoke(["--host", "192.0.2.10", "--app-id", "bad-id"])
         self.assertEqual(raised.exception.code, 2)
 
+    def test_public_host_rejected(self):
+        with self.assertRaises(SystemExit) as raised:
+            self.invoke(["--host", "8.8.8.8", "--app-id", "ABCD1234"])
+        self.assertEqual(raised.exception.code, 2)
+
+    def test_loopback_rejected(self):
+        with self.assertRaises(SystemExit) as raised:
+            self.invoke(["--host", "127.0.0.1", "--app-id", "ABCD1234"])
+        self.assertEqual(raised.exception.code, 2)
+
     def test_launch_and_disconnect(self):
         state = []
         class Receiver:
