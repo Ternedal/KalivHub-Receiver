@@ -14,10 +14,12 @@ body{max-width:850px;margin:0 auto;padding:28px}h1{color:#8bbaff}button{font:inh
 <script>
 (()=>{'use strict';
 const $=id=>document.getElementById(id);
-let stream=null,ctx=null,analyser=null,source=null,raf=0,timeout=0,generation=0;
+let stream=null,ctx=null,analyser=null,source=null,raf=0,timeout=0,generation=0,peak=0,frames=0;
 const log=(label,value)=>{$('status').textContent+=label+': '+String(value)+'\n'};
 const reset=()=>{$('level').style.width='0%';$('meter').setAttribute('aria-valuenow','0')};
 async function stop(){
+ const hadStream=Boolean(stream);
+ if(hadStream)log('Lydmåling',frames+' målinger; højeste niveau '+peak+'/100');
  generation++;
  clearTimeout(timeout);cancelAnimationFrame(raf);raf=0;
  if(stream){stream.getTracks().forEach(t=>t.stop());stream=null}
@@ -30,7 +32,7 @@ async function stop(){
 $('stop').addEventListener('click',()=>{void stop()});
 $('start').addEventListener('click',async()=>{
  $('start').disabled=true;$('stop').disabled=false;
- const requestId=++generation;
+ const requestId=++generation;peak=0;frames=0;
  timeout=setTimeout(()=>{log('Tidsgrænse','10 sekunder');void stop()},10000);
  $('status').textContent='';
  log('Sikker kontekst',window.isSecureContext);
@@ -44,6 +46,7 @@ $('start').addEventListener('click',async()=>{
    stream=obtained;
    log('Tilladelse','Mikrofonstream oprettet');
    log('Lydspor',stream.getAudioTracks().length);
+   log('Lydspor aktivt',stream.getAudioTracks().some(t=>t.readyState==='live'));
    const AudioContextClass=window.AudioContext||window.webkitAudioContext;
    if(!AudioContextClass){log('Resultat','AudioContext mangler');await stop();return}
    ctx=new AudioContextClass();source=ctx.createMediaStreamSource(stream);
@@ -51,7 +54,7 @@ $('start').addEventListener('click',async()=>{
    const values=new Uint8Array(analyser.fftSize);
    const meter=()=>{if(!analyser)return;analyser.getByteTimeDomainData(values);
      let sum=0;for(const v of values){const d=(v-128)/128;sum+=d*d}
-     const rms=Math.sqrt(sum/values.length);const level=Math.min(100,Math.round(rms*350));
+     const rms=Math.sqrt(sum/values.length);const level=Math.min(100,Math.round(rms*350));frames++;peak=Math.max(peak,level);
      $('level').style.width=level+'%';$('meter').setAttribute('aria-valuenow',String(level));
      raf=requestAnimationFrame(meter)};
    meter();
