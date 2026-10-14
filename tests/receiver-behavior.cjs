@@ -33,6 +33,8 @@ function harness(){
 {
  const h=harness();h.snapshot(1);h.receive({type:'control_capabilities',version:1,enabled:true});
  assert.equal(h.get('tiles').children[0].getAttribute('role'),'button');
+ h.get('tiles').children[0].click();
+ assert.equal(h.sent.length,1,'control request pending before timeout');
  h.setNow(146000);h.tick();
  assert.equal(h.get('indicator').className,'stale','timeout marks connection stale');
  assert.equal(h.get('tiles').children[0].getAttribute('role'),null,'stale snapshot revokes control');
@@ -40,6 +42,8 @@ function harness(){
  assert.equal(h.get('tiles').children[0].getAttribute('role'),null,'capabilities alone cannot re-enable stale controls');
  h.snapshot(2);h.receive({type:'control_capabilities',version:1,enabled:true});
  assert.equal(h.get('tiles').children[0].getAttribute('role'),'button','fresh snapshot restores controls');
+ h.get('tiles').children[0].click();
+ assert.equal(h.sent.length,2,'reconnection clears pending controls from expired session');
 }
 {
  const h=harness();h.snapshot(1);
