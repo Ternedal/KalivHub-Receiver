@@ -63,7 +63,7 @@ function touchButtonAt(x,y){
   if(x>=r.left&&x<=r.right&&y>=r.top&&y<=r.bottom)return btn;
  }
  if(controlsEnabled&&$('panel').classList.contains('open')){
-  for(const tile of $('tiles').children){if(tile.getAttribute('role')!=='button')continue;const r=tile.getBoundingClientRect();if(x>=r.left&&x<=r.right&&y>=r.top&&y<=r.bottom)return tile}
+  for(const tile of $('tiles').children){for(const child of tile.children){if(child.tagName!=='BUTTON')continue;const b=child.getBoundingClientRect();if(x>=b.left&&x<=b.right&&y>=b.top&&y<=b.bottom)return child}if(tile.getAttribute('role')!=='button')continue;const r=tile.getBoundingClientRect();if(x>=r.left&&x<=r.right&&y>=r.top&&y<=r.bottom)return tile}
  }
  return null;
 }
