@@ -99,4 +99,16 @@ function harness(){
  assert.equal(h.get('panel').getAttribute('aria-hidden'),'true','assistant closes panel for accessibility');
  assert.equal(h.get('devices').getAttribute('aria-expanded'),'false','assistant resets expanded state');
 }
+{
+ const h=harness();
+ h.receive({type:'snapshot',version:1,sequence:1,session_id:'session1234',entities:[
+  {entity_id:'light.kitchen',name:'Køkkenlys',state:'on',room:'Køkken'},
+  {entity_id:'sensor.bedroom',name:'Temperatur',state:'21',room:'Soveværelse'},
+  {entity_id:'light.bedroom',name:'Lampe',state:'off',room:'Soveværelse'}
+ ]});
+ assert.equal(h.get('tiles').children.length,3,'room grouping retains all tiles');
+ assert.equal(h.get('tiles').children[0].dataset.room,'Køkken','first room heading');
+ assert.equal(h.get('tiles').children[1].dataset.room,'Soveværelse','second room heading');
+ assert.equal(h.get('tiles').children[2].dataset.room,undefined,'room heading not repeated');
+}
 console.log('Receiver behavior checks OK');
