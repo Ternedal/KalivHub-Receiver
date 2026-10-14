@@ -19,3 +19,17 @@ The receiver initializes the official CAF CastReceiverContext. No audio is recor
 **Interpretation:** API absent means the receiver runtime does not expose it. `NotAllowedError` suggests a permission/policy restriction; `NotFoundError` means no exposed capture device. A successful stream without meter activity is *not* proof of usable audio. A successful moving meter would establish basic capture for this specific device/runtime, not guaranteed production support.
 
 Do not merge this experiment into `main` or replace the existing receiver registration solely to run the test.
+
+## Build artifact and HTTPS hosting
+
+The branch-specific workflow `.github/workflows/mic-probe.yml` runs static checks and uploads a **seven-day** GitHub Actions artifact named `kalivhub-nest-mic-probe`. It contains `index.html`, copied from `mic-diagnostic.html`. Download it from the workflow run's **Artifacts** section. This is **not** a public URL.
+
+Host that `index.html` at a dedicated HTTPS origin/path (for example a separate static hosting project) before registering it with Cast. Do **not** point the existing production Cast App ID at the diagnostic or enable GitHub Pages on this branch in a way that replaces the production deployment.
+
+The diagnostic is deliberately self-contained: it needs no Home Assistant, ModelRig, local tokens, or other project files. The Cast SDK is loaded from Google's documented CDN.
+
+## Results checklist
+
+Record the Nest Hub generation, firmware version, Cast test App ID (non-secret), whether the receiver launched, whether the test button was usable, `mediaDevices` / `getUserMedia` results, any DOMException name, and whether the meter visibly changed when speaking. Do not copy credentials into bug reports.
+
+**Limitations:** GitHub CI validates only source shape and syntax; it cannot verify microphone permissions or hardware capture. A successful desktop-browser run does not establish Nest Hub support. A timeout during the browser permission prompt is not proof that capture is unsupported.
