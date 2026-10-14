@@ -18,6 +18,8 @@ const flush=async()=>{for(let i=0;i<12;i++)await Promise.resolve()};
 (async()=>{
  handlers['start:click']();
  assert.equal(pending.length,1);
+ handlers['start:click']();
+ assert.equal(pending.length,1,'duplicate click must not request another stream');
  callbacks[0]();await flush();
  assert.equal(el('start').disabled,false);
  handlers['start:click']();
