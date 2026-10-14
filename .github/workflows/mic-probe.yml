@@ -1,0 +1,27 @@
+name: Build isolated Nest Hub mic probe
+on:
+  push:
+    branches: [test/nest-hub-microphone-probe]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check isolated receiver HTML
+        run: |
+          test -s mic-diagnostic.html
+          node --check tests/mic-probe-static.cjs
+          node tests/mic-probe-static.cjs
+      - name: Package only diagnostic receiver
+        run: |
+          mkdir -p dist
+          cp mic-diagnostic.html dist/index.html
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kalivhub-nest-mic-probe
+          path: dist/
+          if-no-files-found: error
+          retention-days: 7
