@@ -18,6 +18,7 @@ jobs:
           node tests/mic-probe-behavior.cjs
           node tests/mic-probe-errors.cjs
           node tests/mic-probe-empty-stream.cjs
+          node tests/mic-probe-stale-timeout.cjs
       - name: Check Python Cast launcher
         run: |
           python -m compileall -q tools/launch_mic_probe.py tests/test_mic_probe_launcher.py
