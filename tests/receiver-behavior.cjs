@@ -34,6 +34,7 @@ function harness(){
  const h=harness();h.snapshot(1);h.receive({type:'control_capabilities',version:1,enabled:true});
  assert.equal(h.get('tiles').children[0].getAttribute('role'),'button');
  h.setNow(146000);h.tick();
+ assert.equal(h.get('indicator').className,'stale','timeout marks connection stale');
  assert.equal(h.get('tiles').children[0].getAttribute('role'),null,'stale snapshot revokes control');
  h.receive({type:'control_capabilities',version:1,enabled:true});
  assert.equal(h.get('tiles').children[0].getAttribute('role'),null,'capabilities alone cannot re-enable stale controls');
