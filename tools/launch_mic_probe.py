@@ -14,8 +14,14 @@ def main() -> int:
         host_ip = ipaddress.ip_address(args.host)
     except ValueError:
         parser.error("host must be a local IP address")
-    if not host_ip.is_private or host_ip.is_loopback or host_ip.is_link_local or host_ip.is_multicast:
-        parser.error("host must be a private LAN IP address")
+    lan_ranges = (
+        ipaddress.ip_network("10.0.0.0/8"),
+        ipaddress.ip_network("172.16.0.0/12"),
+        ipaddress.ip_network("192.168.0.0/16"),
+        ipaddress.ip_network("fc00::/7"),
+    )
+    if not any(host_ip in network for network in lan_ranges):
+        parser.error("host must be an RFC1918 IPv4 or ULA IPv6 address")
     if not args.app_id.isalnum() or not 4 <= len(args.app_id) <= 32:
         parser.error("app-id must be 4–32 alphanumeric characters")
     if args.dry_run:
