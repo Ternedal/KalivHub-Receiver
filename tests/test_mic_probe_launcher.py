@@ -53,12 +53,12 @@ class LauncherTests(unittest.TestCase):
                 state.append(("disconnect",))
         code, out, err = self.invoke(
             ["--host", "192.0.2.10", "--app-id", "ABCD1234"],
-            types.SimpleNamespace(Chromecast=Cast),
+            types.SimpleNamespace(get_chromecast_from_host=lambda host: Cast(host)),
         )
         self.assertEqual(code, 0, err)
         self.assertIn("Launch requested", out)
         self.assertEqual(state, [
-            ("connect", "192.0.2.10"), ("wait", 15),
+            ("connect", ("192.0.2.10", 8009, None, None, None)), ("wait", 15),
             ("launch", "ABCD1234"), ("disconnect",),
         ])
 
