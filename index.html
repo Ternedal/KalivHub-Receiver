@@ -29,11 +29,11 @@ function requestControl(item){
  const request_id='tap-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,12);
  try{
   const delivery=castContext.sendCustomMessage(CONTROL_NS,senderId,{type:'control_request',version:1,request_id,entity_id:item.entity_id,action});
-  pendingControls.set(item.entity_id,{original:item.state,at:Date.now()});
+  pendingControls.set(item.entity_id,{original:item.state,request_id,at:Date.now()});
   $('connection').textContent='Kommando sendt · afventer status';
   // CAF may reject asynchronously when the sender disconnects mid-tap.
   if(delivery&&typeof delivery.catch==='function')delivery.catch(()=>{
-   if(pendingControls.get(item.entity_id)?.original===item.state){pendingControls.delete(item.entity_id);$('connection').textContent='Kunne ikke sende kommando';render()}
+   if(pendingControls.get(item.entity_id)?.request_id===request_id){pendingControls.delete(item.entity_id);$('connection').textContent='Kunne ikke sende kommando';render()}
   });
  }catch{$('connection').textContent='Kunne ikke sende kommando'}
 }
