@@ -47,9 +47,13 @@ $('start').addEventListener('click',async()=>{
    log('Tilladelse','Mikrofonstream oprettet');
    log('Lydspor',stream.getAudioTracks().length);
    log('Lydspor aktivt',stream.getAudioTracks().some(t=>t.readyState==='live'));
+   if(!stream.getAudioTracks().length){log('Resultat','Ingen lydspor i stream');await stop();return}
    const AudioContextClass=window.AudioContext||window.webkitAudioContext;
    if(!AudioContextClass){log('Resultat','AudioContext mangler');await stop();return}
-   ctx=new AudioContextClass();source=ctx.createMediaStreamSource(stream);
+   ctx=new AudioContextClass();
+   if(ctx.state==='suspended'&&typeof ctx.resume==='function')await ctx.resume();
+   if(requestId!==generation)return;
+   source=ctx.createMediaStreamSource(stream);
    analyser=ctx.createAnalyser();analyser.fftSize=1024;source.connect(analyser);
    const values=new Uint8Array(analyser.fftSize);
    const meter=()=>{if(!analyser)return;analyser.getByteTimeDomainData(values);
