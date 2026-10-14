@@ -17,7 +17,6 @@ def main() -> int:
         return 2
 
     cast = None
-    browser = None
     try:
         # pychromecast resolves device metadata and opens the local Cast channel.
         cast = pychromecast.Chromecast(args.host)
