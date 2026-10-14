@@ -151,4 +151,14 @@ function harness(){
  assert.equal(h.sent.length,2,'confirmed temperature permits next adjustment');
  assert.equal(h.sent[1].data.temperature,23,'next adjustment uses confirmed target');
 }
+{
+ const h=harness();
+ h.receive({type:'snapshot',version:1,sequence:1,session_id:'session1234',entities:[
+  {entity_id:'climate.living',name:'Varme',state:'heat',room:'Stue',temperature:22}
+ ]});
+ h.receive({type:'snapshot',version:1,sequence:2,session_id:'session1234',entities:[
+  {entity_id:'climate.living',name:'Varme',state:'heat',room:'Stue',temperature:'not-a-number'}
+ ]});
+ assert.equal(h.get('tiles').children[0].children[2].textContent,'Mål 22 °C','invalid climate snapshot rejected');
+}
 console.log('Receiver behavior checks OK');
