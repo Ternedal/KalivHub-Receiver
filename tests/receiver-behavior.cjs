@@ -178,4 +178,9 @@ function harness(){
  assert.equal(tile.children.length,3,'camera tile has no injected video element');
  assert.equal(tile.children[2].textContent.includes('example.invalid'),false,'camera credentials not rendered');
 }
+{
+ const h=harness();h.snapshot(1);h.setNow(146000);h.tick();
+ assert.equal(h.get('indicator').className,'stale','read-only dashboard becomes stale');
+ assert.equal(h.get('devices').querySelector('small').textContent,'Kun visning','read-only stale state shown');
+}
 console.log('Receiver behavior checks OK');
