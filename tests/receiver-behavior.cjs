@@ -7,7 +7,7 @@ function element(id='',tagName='DIV'){
  setAttribute(k,v){attributes[k]=v},getAttribute(k){return attributes[k]||null},append(...xs){this.children.push(...xs)},replaceChildren(...xs){this.children=xs},getClientRects(){return []},getBoundingClientRect(){return {left:0,right:0,top:0,bottom:0}},click(){this.onclick?.()},querySelector(){return this.small||(this.small=element('small'))}};return el;
 }
 function harness(){
- const ids=new Map();const get=id=>{if(!ids.has(id))ids.set(id,element(id));return ids.get(id)};
+ const ids=new Map();const get=id=>{if(!ids.has(id))ids.set(id,element(id));return ids.get(id)};get('devices').querySelector('small').textContent='Kun visning';
  const listeners={};const sent=[];let now=100000;let scheduledTick=null;let deliveryFailure=false;let deferredFailure=null;let delayedReject=null;const ctx={addCustomMessageListener(ns,fn){listeners[ns]=fn},sendCustomMessage(ns,to,data){sent.push({ns,to,data});if(deliveryFailure)return {catch(fn){fn(new Error('offline'))}};if(deferredFailure)return {catch(fn){delayedReject=fn}}},start(){}};
  const DateMock=class extends Date{constructor(...a){super(...(a.length?a:[now]))}static now(){return now}};
  const context={document:{getElementById:get,createElement:tag=>element('',tag.toUpperCase()),addEventListener(){}},window:{cast:{framework:{}}},cast:{framework:{CastReceiverContext:{getInstance:()=>ctx}}},Date:DateMock,setInterval(fn){scheduledTick=fn},console,Math};
@@ -17,7 +17,7 @@ function harness(){
  return {get,receive,snapshot,sent,setNow:v=>{now=v},failDelivery:v=>{deliveryFailure=v},deferFailure:v=>{deferredFailure=v},rejectDelayed:()=>delayedReject?.(new Error('offline')),tick:()=>scheduledTick?.()};
 }
 {
- const h=harness();h.receive({type:'control_capabilities',version:1,enabled:true});assert.equal(h.get('devices').querySelector('small').textContent,'Kun visning','capabilities alone cannot enable controls');
+ const h=harness();h.receive({type:'control_capabilities',version:1,enabled:true});assert.notEqual(h.get('devices').querySelector('small').textContent,'Tryk for at styre','capabilities alone cannot enable controls');
  h.snapshot(1);h.receive({type:'control_capabilities',version:1,enabled:true});assert.equal(h.get('tiles').children[0].getAttribute('role'),'button');
  h.get('tiles').children[0].click();assert.equal(h.sent.length,1);assert.equal(h.sent[0].data.action,'turn_on');
  h.get('tiles').children[0].click();assert.equal(h.sent.length,1,'repeated tap suppressed');
@@ -75,7 +75,7 @@ function harness(){
 }
 {
  const h=harness();h.snapshot(1);
- h.receive({type:'snapshot',version:1,session_id:'session1234',sequence:2,entities:[{entity_id:'light.kitchen',name:'Bad\\u0085Name',state:'on'}]});
+ h.receive({type:'snapshot',version:1,session_id:'session1234',sequence:2,entities:[{entity_id:'light.kitchen',name:'Bad\u0085Name',state:'on'}]});
  assert.equal(h.get('tiles').children[0].children[1].textContent,'off','C1 control character rejected');
  h.snapshot(2,'session1234','on');
  assert.equal(h.get('tiles').children[0].children[1].textContent,'on','rejected text does not advance sequence');
@@ -160,5 +160,27 @@ function harness(){
   {entity_id:'climate.living',name:'Varme',state:'heat',room:'Stue',temperature:'not-a-number'}
  ]});
  assert.equal(h.get('tiles').children[0].children[2].textContent,'Mål 22 °C','invalid climate snapshot rejected');
+}
+{
+ const h=harness();
+ h.receive({type:'snapshot',version:1,sequence:1,session_id:'session1234',entities:[
+  {entity_id:'camera.front_door',name:'Hoveddør',state:'unavailable',room:'Entré'}
+ ]});
+ assert.match(h.get('tiles').children[0].children[2].textContent,/offline/,'offline camera clearly marked');
+}
+// The PR gate also exercises thermostat requests against the current receiver main.
+{
+ const h=harness();
+ h.receive({type:'snapshot',version:1,sequence:1,session_id:'session1234',entities:[
+  {entity_id:'camera.front_door',name:'Hoveddør',state:'idle',room:'Entré',stream_url:'https://example.invalid/token'}
+ ]});
+ const tile=h.get('tiles').children[0];
+ assert.equal(tile.children.length,3,'camera tile has no injected video element');
+ assert.equal(tile.children[2].textContent.includes('example.invalid'),false,'camera credentials not rendered');
+}
+{
+ const h=harness();h.snapshot(1);h.setNow(146000);h.tick();
+ assert.equal(h.get('indicator').className,'stale','read-only dashboard becomes stale');
+ assert.equal(h.get('devices').querySelector('small').textContent,'Kun visning','read-only stale state shown');
 }
 console.log('Receiver behavior checks OK');
