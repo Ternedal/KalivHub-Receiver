@@ -43,3 +43,17 @@ At the end of a successful stream, the diagnostic reports the number of local au
 After registering the **separate** diagnostic receiver App ID, a local machine with Python and `pychromecast` can launch it without Home Assistant or ModelRig. The diagnostic sender is intentionally kept separate from the production sender. Run `python -m pip install pychromecast` and use `python tools/launch_mic_probe.py --app-id YOUR_TEST_APP_ID --host NEST_HUB_IP`. The receiver URL must already be hosted and registered; this script cannot register Cast apps, enable GitHub Pages, or grant microphone permissions.
 
 Only run on a trusted local network. The sender does not transmit credentials or audio.
+
+## Safe HTTPS publication without changing production Pages
+
+Do **not** change the repository's existing GitHub Pages source, branch, custom domain, or production Cast App ID to host this probe. GitHub Pages has one published site per repository; a branch switch could replace the live receiver.
+
+The simplest independent option is a separate static hosting site (for example, Netlify Drop):
+
+1. Download the `kalivhub-nest-mic-probe` artifact from the successful `Build isolated Nest Hub mic probe` Actions run, and extract it. It contains only `index.html`.
+2. Publish the extracted folder as a **new, independent** static site using a provider that supplies HTTPS. Do not connect it to the production repository or domain.
+3. Open the resulting HTTPS URL in a regular browser to check that the diagnostic page loads. This only checks hosting, **not** Cast or Nest Hub microphone support.
+4. Register that exact HTTPS URL as a separate Custom Web Receiver in Google Cast Developer Console. Launch its new test App ID from a sender and then perform the physical test described above.
+5. Delete the temporary hosting site after recording the results if no longer needed.
+
+A GitHub Actions artifact link, GitHub blob/raw URL, or jsDelivr source URL should **not** be assumed to work as a Cast receiver: the receiver needs a directly served HTML page over HTTPS with the correct content type and accessible resources. The separate hosting provider's deployment and Cast Console registration require account access and have **not** been performed by CI.
