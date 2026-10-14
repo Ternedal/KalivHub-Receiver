@@ -8,13 +8,13 @@ function element(id=''){
 }
 function harness(){
  const ids=new Map();const get=id=>{if(!ids.has(id))ids.set(id,element(id));return ids.get(id)};
- const listeners={};const sent=[];let now=100000;let scheduledTick=null;let deliveryFailure=false;const ctx={addCustomMessageListener(ns,fn){listeners[ns]=fn},sendCustomMessage(ns,to,data){sent.push({ns,to,data});if(deliveryFailure)return {catch(fn){fn(new Error('offline'))}}},start(){}};
+ const listeners={};const sent=[];let now=100000;let scheduledTick=null;let deliveryFailure=false;let deferredFailure=null;let delayedReject=null;const ctx={addCustomMessageListener(ns,fn){listeners[ns]=fn},sendCustomMessage(ns,to,data){sent.push({ns,to,data});if(deliveryFailure)return {catch(fn){fn(new Error('offline'))}};if(deferredFailure)return {catch(fn){delayedReject=fn}}},start(){}};
  const DateMock=class extends Date{constructor(...a){super(...(a.length?a:[now]))}static now(){return now}};
  const context={document:{getElementById:get,createElement:()=>element(),addEventListener(){}},window:{cast:{framework:{}}},cast:{framework:{CastReceiverContext:{getInstance:()=>ctx}}},Date:DateMock,setInterval(fn){scheduledTick=fn},console,Math};
  vm.runInNewContext(script,context,{filename:'receiver-inline.js'});
  const receive=(data,senderId='sender-1')=>listeners['urn:x-cast:dk.kalivhub.lab']({data,senderId});
  const snapshot=(sequence,session_id='session1234',state='off')=>receive({type:'snapshot',version:1,sequence,session_id,entities:[{entity_id:'light.kitchen',name:'Kitchen',state}]});
- return {get,receive,snapshot,sent,setNow:v=>{now=v},failDelivery:v=>{deliveryFailure=v},tick:()=>scheduledTick?.()};
+ return {get,receive,snapshot,sent,setNow:v=>{now=v},failDelivery:v=>{deliveryFailure=v},deferFailure:v=>{deferredFailure=v},rejectDelayed:()=>delayedReject?.(new Error('offline')),tick:()=>scheduledTick?.()};
 }
 {
  const h=harness();h.receive({type:'control_capabilities',version:1,enabled:true});assert.equal(h.get('devices').querySelector('small').textContent,'Kun visning','capabilities alone cannot enable controls');
@@ -79,5 +79,15 @@ function harness(){
  assert.equal(h.get('tiles').children[0].children[1].textContent,'off','C1 control character rejected');
  h.snapshot(2,'session1234','on');
  assert.equal(h.get('tiles').children[0].children[1].textContent,'on','rejected text does not advance sequence');
+}
+{
+ const h=harness();h.snapshot(1);h.receive({type:'control_capabilities',version:1,enabled:true});
+ h.deferFailure(true);h.get('tiles').children[0].click();
+ h.setNow(146000);h.tick();
+ h.rejectDelayed();
+ assert.equal(h.get('connection').textContent,'Forbindelsen er afbrudt','late delivery failure cannot overwrite disconnect status');
+ h.snapshot(2);h.receive({type:'control_capabilities',version:1,enabled:true});
+ h.rejectDelayed();
+ assert.equal(h.get('connection').textContent,'Forbundet · 1 enheder','late failure cannot overwrite recovered status');
 }
 console.log('Receiver behavior checks OK');
