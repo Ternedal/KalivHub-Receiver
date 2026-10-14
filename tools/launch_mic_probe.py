@@ -8,6 +8,13 @@ def main() -> int:
     parser.add_argument("--app-id", required=True, help="Separate diagnostic Cast App ID")
     parser.add_argument("--host", required=True, help="Local Nest Hub IP address")
     args = parser.parse_args()
+    import ipaddress
+    try:
+        host_ip = ipaddress.ip_address(args.host)
+    except ValueError:
+        parser.error("host must be a local IP address")
+    if not host_ip.is_private or host_ip.is_loopback or host_ip.is_link_local or host_ip.is_multicast:
+        parser.error("host must be a private LAN IP address")
     if not args.app_id.isalnum() or not 4 <= len(args.app_id) <= 32:
         parser.error("app-id must be 4–32 alphanumeric characters")
     try:
