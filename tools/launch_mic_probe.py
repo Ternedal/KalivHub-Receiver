@@ -7,6 +7,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--app-id", required=True, help="Separate diagnostic Cast App ID")
     parser.add_argument("--host", required=True, help="Local Nest Hub IP address")
+    parser.add_argument("--dry-run", action="store_true", help="Validate arguments without connecting")
     args = parser.parse_args()
     import ipaddress
     try:
@@ -17,6 +18,10 @@ def main() -> int:
         parser.error("host must be a private LAN IP address")
     if not args.app_id.isalnum() or not 4 <= len(args.app_id) <= 32:
         parser.error("app-id must be 4–32 alphanumeric characters")
+    if args.dry_run:
+        print(f"VALID: diagnostic App ID {args.app_id}; private LAN target {host_ip}")
+        print("No Cast connection attempted.")
+        return 0
     try:
         import pychromecast
     except ImportError:
