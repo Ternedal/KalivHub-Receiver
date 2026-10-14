@@ -39,7 +39,7 @@ function requestControl(item){
 }
 function requestTemperature(item,delta){
  if(!controlsEnabled||!senderId||!castContext||Date.now()-lastMessage>45000)return;
- if(!/^climate\\.[a-z0-9_]{1,120}$/.test(item.entity_id))return;
+ if(!/^climate\.[a-z0-9_]{1,120}$/.test(item.entity_id))return;
  if(typeof item.temperature!=='number'||!Number.isFinite(item.temperature))return;
  const previous=pendingControls.get(item.entity_id);if(previous&&Date.now()-previous.at<15000)return;if(previous)pendingControls.delete(item.entity_id);
  const temperature=Math.round((item.temperature+delta)*2)/2;
