@@ -33,3 +33,7 @@ The diagnostic is deliberately self-contained: it needs no Home Assistant, Model
 Record the Nest Hub generation, firmware version, Cast test App ID (non-secret), whether the receiver launched, whether the test button was usable, `mediaDevices` / `getUserMedia` results, any DOMException name, and whether the meter visibly changed when speaking. Do not copy credentials into bug reports.
 
 **Limitations:** GitHub CI validates only source shape and syntax; it cannot verify microphone permissions or hardware capture. A successful desktop-browser run does not establish Nest Hub support. A timeout during the browser permission prompt is not proof that capture is unsupported.
+
+## Evidence to capture
+
+At the end of a successful stream, the diagnostic reports the number of local audio-meter frames and its highest measured level (0–100). A zero peak with frames present suggests silence or inaccessible audio; it is not proof of a functioning microphone. Record these two numbers along with the stream's live-track result. The report contains no audio samples.
