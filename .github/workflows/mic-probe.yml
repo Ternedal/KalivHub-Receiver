@@ -3,6 +3,13 @@ on:
   push:
     branches: [test/nest-hub-microphone-probe]
   workflow_dispatch:
+  pull_request:
+    paths:
+      - 'mic-diagnostic.html'
+      - 'tests/mic-probe-*.cjs'
+      - 'tests/test_mic_probe_launcher.py'
+      - 'tools/launch_mic_probe.py'
+      - '.github/workflows/mic-probe.yml'
 permissions:
   contents: read
 jobs:
