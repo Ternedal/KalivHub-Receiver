@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="da"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>KalivHub – mikrofon-diagnose</title>
+<style>
+:root{color-scheme:dark;font-family:system-ui,sans-serif;background:#070d19;color:#eef5ff}
+body{max-width:850px;margin:0 auto;padding:28px}h1{color:#8bbaff}button{font:inherit;padding:15px 20px;margin:8px 8px 8px 0;border:1px solid #649bff;background:#10294e;color:white;border-radius:12px}button:disabled{opacity:.4}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#101c30;border-radius:12px;padding:16px;min-height:110px}#meter{height:16px;background:#24334d;border-radius:8px;overflow:hidden}#level{width:0;height:100%;background:#4edcb7;transition:width .12s}p{line-height:1.5;color:#b4c7e3}
+</style></head><body>
+<h1>KalivHub · Mikrofon-diagnose</h1>
+<p>Frivillig lokal test af mikrofonadgang. Startes kun med knappen. Ingen lyd gemmes, afspilles eller sendes til en server. Mikrofonsporet stoppes automatisk efter 10 sekunder eller ved Stop.</p>
+<button id="start">Test mikrofon (10 sek.)</button><button id="stop" disabled>Stop</button>
+<div id="meter" role="meter" aria-label="Lydniveau" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div id="level"></div></div>
+<pre id="status" role="status" aria-live="polite">Klar. Tryk på Test mikrofon.</pre>
+<script>
+(()=>{'use strict';
+const $=id=>document.getElementById(id);
+let stream=null,ctx=null,analyser=null,source=null,raf=0,timeout=0;
+const log=(label,value)=>{$('status').textContent+=label+': '+String(value)+'\n'};
+const reset=()=>{$('level').style.width='0%';$('meter').setAttribute('aria-valuenow','0')};
+async function stop(){
+ clearTimeout(timeout);cancelAnimationFrame(raf);raf=0;
+ if(stream){stream.getTracks().forEach(t=>t.stop());stream=null}
+ try{if(source)source.disconnect()}catch{}
+ source=null;analyser=null;
+ if(ctx){const old=ctx;ctx=null;try{await old.close()}catch{}}
+ $('start').disabled=false;$('stop').disabled=true;reset();
+ log('Status','Mikrofon stoppet');
+}
+$('stop').addEventListener('click',()=>{void stop()});
+$('start').addEventListener('click',async()=>{
+ $('start').disabled=true;$('stop').disabled=false;
+ $('status').textContent='';
+ log('Sikker kontekst',window.isSecureContext);
+ log('Cast receiver SDK',Boolean(window.cast&&window.cast.framework));
+ log('mediaDevices',Boolean(navigator.mediaDevices));
+ log('getUserMedia',typeof navigator.mediaDevices?.getUserMedia);
+ if(!navigator.mediaDevices?.getUserMedia){log('Resultat','API ikke tilgængelig');await stop();return}
+ try{
+   stream=await navigator.mediaDevices.getUserMedia({audio:true,video:false});
+   log('Tilladelse','Mikrofonstream oprettet');
+   log('Lydspor',stream.getAudioTracks().length);
+   const AudioContextClass=window.AudioContext||window.webkitAudioContext;
+   if(!AudioContextClass){log('Resultat','AudioContext mangler');await stop();return}
+   ctx=new AudioContextClass();source=ctx.createMediaStreamSource(stream);
+   analyser=ctx.createAnalyser();analyser.fftSize=1024;source.connect(analyser);
+   const values=new Uint8Array(analyser.fftSize);
+   const meter=()=>{if(!analyser)return;analyser.getByteTimeDomainData(values);
+     let sum=0;for(const v of values){const d=(v-128)/128;sum+=d*d}
+     const rms=Math.sqrt(sum/values.length);const level=Math.min(100,Math.round(rms*350));
+     $('level').style.width=level+'%';$('meter').setAttribute('aria-valuenow',String(level));
+     raf=requestAnimationFrame(meter)};
+   meter();timeout=setTimeout(()=>{log('Tidsgrænse','10 sekunder');void stop()},10000);
+ }catch(err){log('Fejltype',err?.name||'Ukendt');log('Fejlbesked',err?.message||'Ingen detaljer');await stop()}
+});
+window.addEventListener('pagehide',()=>{void stop()});
+})();
+</script></body></html>
