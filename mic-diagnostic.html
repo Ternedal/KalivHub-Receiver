@@ -21,13 +21,13 @@ async function stop(){
  const hadStream=Boolean(stream);
  if(hadStream)log('Lydmåling',frames+' målinger; højeste niveau '+peak+'/100');
  generation++;
+ const stoppingGeneration=generation;
  clearTimeout(timeout);cancelAnimationFrame(raf);raf=0;
  if(stream){stream.getTracks().forEach(t=>t.stop());stream=null}
  try{if(source)source.disconnect()}catch{}
  source=null;analyser=null;
  if(ctx){const old=ctx;ctx=null;try{await old.close()}catch{}}
- $('start').disabled=false;$('stop').disabled=true;reset();
- log('Status','Mikrofon stoppet');
+ if(!stream&&generation===stoppingGeneration){$('start').disabled=false;$('stop').disabled=true;reset();log('Status','Mikrofon stoppet')}
 }
 $('stop').addEventListener('click',()=>{void stop()});
 $('start').addEventListener('click',async()=>{
