@@ -28,9 +28,13 @@ function requestControl(item){
  const action=item.state==='on'?'turn_off':'turn_on';
  const request_id='tap-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,12);
  try{
-  castContext.sendCustomMessage(CONTROL_NS,senderId,{type:'control_request',version:1,request_id,entity_id:item.entity_id,action});
+  const delivery=castContext.sendCustomMessage(CONTROL_NS,senderId,{type:'control_request',version:1,request_id,entity_id:item.entity_id,action});
   pendingControls.set(item.entity_id,{original:item.state,at:Date.now()});
   $('connection').textContent='Kommando sendt · afventer status';
+  // CAF may reject asynchronously when the sender disconnects mid-tap.
+  if(delivery&&typeof delivery.catch==='function')delivery.catch(()=>{
+   if(pendingControls.get(item.entity_id)?.original===item.state){pendingControls.delete(item.entity_id);$('connection').textContent='Kunne ikke sende kommando';render()}
+  });
  }catch{$('connection').textContent='Kunne ikke sende kommando'}
 }
 function render(){const root=$('tiles');root.replaceChildren();if(!states.length){const p=document.createElement('p');p.textContent=$('indicator').className==='stale'?'Forbindelsen er afbrudt. Afventer nye data.':'Ingen godkendte enheder modtaget';root.append(p);return}for(const item of states){const tile=document.createElement('div');tile.className='tile';const status=item.state.toLowerCase();tile.dataset.status=status==='on'||status==='open'||status==='heat'?'on':status==='off'||status==='closed'?'off':status==='unavailable'||status==='unknown'?'unavailable':'neutral';const name=document.createElement('strong');name.textContent=item.name;const state=document.createElement('p');state.textContent=item.state;tile.append(name,state);if(controlsEnabled&&/^(light|switch|input_boolean)\.[a-z0-9_]{1,120}$/.test(item.entity_id)&&(status==='on'||status==='off')){tile.setAttribute('role','button');tile.setAttribute('tabindex','0');tile.setAttribute('aria-label',item.name+' · '+(status==='on'?'Sluk':'Tænd'));tile.onclick=()=>requestControl(item);tile.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();requestControl(item)}}}root.append(tile)}}
