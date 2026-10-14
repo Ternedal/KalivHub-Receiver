@@ -10,6 +10,7 @@ body{max-width:850px;margin:0 auto;padding:28px}h1{color:#8bbaff}button{font:inh
 <button id="start">Test mikrofon (10 sek.)</button><button id="stop" disabled>Stop</button>
 <div id="meter" role="meter" aria-label="Lydniveau" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div id="level"></div></div>
 <pre id="status" role="status" aria-live="polite">Klar. Tryk på Test mikrofon.</pre>
+<script src="https://www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
 <script>
 (()=>{'use strict';
 const $=id=>document.getElementById(id);
@@ -51,6 +52,19 @@ $('start').addEventListener('click',async()=>{
    meter();timeout=setTimeout(()=>{log('Tidsgrænse','10 sekunder');void stop()},10000);
  }catch(err){log('Fejltype',err?.name||'Ukendt');log('Fejlbesked',err?.message||'Ingen detaljer');await stop()}
 });
+// Start a real Custom Web Receiver session when this page is registered
+// as the Cast receiver URL. This diagnostic never sends Cast messages.
+try {
+  if(window.cast?.framework?.CastReceiverContext){
+    const receiver=window.cast.framework.CastReceiverContext.getInstance();
+    const options=new window.cast.framework.CastReceiverOptions();
+    options.disableIdleTimeout=true;
+    receiver.start(options);
+    log('Cast','Receiver startet');
+  }else{
+    log('Cast','SDK ikke tilgængelig – almindelig browser-preview');
+  }
+}catch(err){log('Cast-fejl',err?.name||'Ukendt');}
 window.addEventListener('pagehide',()=>{void stop()});
 })();
 </script></body></html>
