@@ -90,4 +90,13 @@ function harness(){
  h.rejectDelayed();
  assert.equal(h.get('connection').textContent,'Forbundet · 1 enheder','late failure cannot overwrite recovered status');
 }
+{
+ const h=harness();
+ h.get('devices').click();
+ assert.equal(h.get('panel').getAttribute('aria-hidden'),'false','devices opens panel');
+ assert.equal(h.get('devices').getAttribute('aria-expanded'),'true','devices exposes expanded state');
+ h.get('assistant').click();
+ assert.equal(h.get('panel').getAttribute('aria-hidden'),'true','assistant closes panel for accessibility');
+ assert.equal(h.get('devices').getAttribute('aria-expanded'),'false','assistant resets expanded state');
+}
 console.log('Receiver behavior checks OK');
