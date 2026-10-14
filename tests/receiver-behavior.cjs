@@ -169,4 +169,13 @@ function harness(){
  assert.match(h.get('tiles').children[0].children[2].textContent,/offline/,'offline camera clearly marked');
 }
 // The PR gate also exercises thermostat requests against the current receiver main.
+{
+ const h=harness();
+ h.receive({type:'snapshot',version:1,sequence:1,session_id:'session1234',entities:[
+  {entity_id:'camera.front_door',name:'Hoveddør',state:'idle',room:'Entré',stream_url:'https://example.invalid/token'}
+ ]});
+ const tile=h.get('tiles').children[0];
+ assert.equal(tile.children.length,3,'camera tile has no injected video element');
+ assert.equal(tile.children[2].textContent.includes('example.invalid'),false,'camera credentials not rendered');
+}
 console.log('Receiver behavior checks OK');
