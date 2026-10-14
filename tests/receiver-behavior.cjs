@@ -8,13 +8,13 @@ function element(id=''){
 }
 function harness(){
  const ids=new Map();const get=id=>{if(!ids.has(id))ids.set(id,element(id));return ids.get(id)};
- const listeners={};const sent=[];let now=100000;let scheduledTick=null;const ctx={addCustomMessageListener(ns,fn){listeners[ns]=fn},sendCustomMessage(ns,to,data){sent.push({ns,to,data})},start(){}};
+ const listeners={};const sent=[];let now=100000;let scheduledTick=null;let deliveryFailure=false;const ctx={addCustomMessageListener(ns,fn){listeners[ns]=fn},sendCustomMessage(ns,to,data){sent.push({ns,to,data});if(deliveryFailure)return {catch(fn){fn(new Error('offline'))}}},start(){}};
  const DateMock=class extends Date{constructor(...a){super(...(a.length?a:[now]))}static now(){return now}};
  const context={document:{getElementById:get,createElement:()=>element(),addEventListener(){}},window:{cast:{framework:{}}},cast:{framework:{CastReceiverContext:{getInstance:()=>ctx}}},Date:DateMock,setInterval(fn){scheduledTick=fn},console,Math};
  vm.runInNewContext(script,context,{filename:'receiver-inline.js'});
  const receive=(data,senderId='sender-1')=>listeners['urn:x-cast:dk.kalivhub.lab']({data,senderId});
  const snapshot=(sequence,session_id='session1234',state='off')=>receive({type:'snapshot',version:1,sequence,session_id,entities:[{entity_id:'light.kitchen',name:'Kitchen',state}]});
- return {get,receive,snapshot,sent,setNow:v=>{now=v},tick:()=>scheduledTick?.()};
+ return {get,receive,snapshot,sent,setNow:v=>{now=v},failDelivery:v=>{deliveryFailure=v},tick:()=>scheduledTick?.()};
 }
 {
  const h=harness();h.receive({type:'control_capabilities',version:1,enabled:true});assert.equal(h.get('devices').querySelector('small').textContent,'Kun visning','capabilities alone cannot enable controls');
@@ -48,5 +48,13 @@ function harness(){
  assert.equal(h.get('tiles').children[0].getAttribute('role'),'button','snapshot sender can enable controls');
  h.receive({type:'snapshot',version:1,sequence:1,session_id:'other12345',entities:[{entity_id:'light.kitchen',name:'Kitchen',state:'on'}]},'different-sender');
  assert.equal(h.get('tiles').children[0].getAttribute('role'),null,'sender switch revokes controls');
+}
+{
+ const h=harness();h.snapshot(1);h.receive({type:'control_capabilities',version:1,enabled:true});
+ h.failDelivery(true);h.get('tiles').children[0].click();
+ assert.equal(h.sent.length,1);
+ assert.equal(h.get('connection').textContent,'Kunne ikke sende kommando','asynchronous failure is visible');
+ h.failDelivery(false);h.get('tiles').children[0].click();
+ assert.equal(h.sent.length,2,'failed delivery does not lock out retries');
 }
 console.log('Receiver behavior checks OK');
