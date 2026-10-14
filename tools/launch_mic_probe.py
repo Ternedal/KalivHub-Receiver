@@ -31,7 +31,7 @@ def main() -> int:
     cast = None
     try:
         # pychromecast resolves device metadata and opens the local Cast channel.
-        cast = pychromecast.Chromecast(args.host)
+        cast = pychromecast.get_chromecast_from_host((str(host_ip), 8009, None, None, None))
         cast.wait(timeout=15)
         cast.receiver_controller.launch_app(args.app_id)
         print("Launch requested. Check the Nest Hub screen for the diagnostic receiver.")
