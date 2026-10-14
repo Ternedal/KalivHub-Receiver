@@ -33,7 +33,7 @@ $('stop').addEventListener('click',()=>{void stop()});
 $('start').addEventListener('click',async()=>{
  $('start').disabled=true;$('stop').disabled=false;
  const requestId=++generation;peak=0;frames=0;
- timeout=setTimeout(()=>{log('Tidsgrænse','10 sekunder');void stop()},10000);
+ timeout=setTimeout(()=>{if(requestId!==generation)return;log('Tidsgrænse','10 sekunder');void stop()},10000);
  $('status').textContent='';
  log('Sikker kontekst',window.isSecureContext);
  log('Cast receiver SDK',Boolean(window.cast&&window.cast.framework));
