@@ -5,7 +5,9 @@
 :root{color-scheme:dark;font-family:system-ui,sans-serif;background:#070d19;color:#eef5ff}
 body{max-width:850px;margin:0 auto;padding:28px}h1{color:#8bbaff}button{font:inherit;padding:15px 20px;margin:8px 8px 8px 0;border:1px solid #649bff;background:#10294e;color:white;border-radius:12px}button:disabled{opacity:.4}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#101c30;border-radius:12px;padding:16px;min-height:110px}#meter{height:16px;background:#24334d;border-radius:8px;overflow:hidden}#level{width:0;height:100%;background:#4edcb7;transition:width .12s}p{line-height:1.5;color:#b4c7e3}
 </style></head><body>
-<h1>KalivHub · Mikrofon-diagnose</h1>
+<h1>KalivHub · Nest Hub</h1>
+<section id="kaliv-panel" aria-live="polite" style="padding:22px;background:#10294e;border-radius:16px;margin-bottom:22px"><p id="kaliv-state">Kaliv er klar</p><div id="kaliv-message" style="font-size:30px;line-height:1.3;white-space:pre-wrap;overflow-wrap:anywhere">Venter på besked fra riggen…</div></section>
+<h2>Mikrofon-diagnose</h2>
 <p>Frivillig lokal test af mikrofonadgang. Startes med knappen eller en Cast-kommando fra den lokale testsender. Ingen lyd gemmes, afspilles eller sendes til en server. Mikrofonsporet stoppes automatisk efter 10 sekunder eller ved Stop.</p>
 <button id="start">Test mikrofon (10 sek.)</button><button id="stop" disabled>Stop</button>
 <div id="meter" role="meter" aria-label="Lydniveau" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div id="level"></div></div>
@@ -75,7 +77,19 @@ try {
     receiver=window.cast.framework.CastReceiverContext.getInstance();
     receiver.addCustomMessageListener(NS,event=>{
       const type=event?.data?.type;
-      if(type==='PROBE_CONSTRAINTS'){
+      if(type==='SHOW_MESSAGE'){
+        const message=event?.data?.text;
+        if(typeof message!=='string'||message.length>2000){report('KALIV_DISPLAY',{result:'invalid'});return}
+        $('kaliv-message').textContent=message;
+        $('kaliv-state').textContent='Kaliv · besked modtaget';
+        report('KALIV_DISPLAY',{result:'shown',length:message.length});
+      }
+      else if(type==='CLEAR_MESSAGE'){
+        $('kaliv-message').textContent='Venter på besked fra riggen…';
+        $('kaliv-state').textContent='Kaliv er klar';
+        report('KALIV_DISPLAY',{result:'cleared'});
+      }
+      else if(type==='PROBE_CONSTRAINTS'){
         const media=navigator.mediaDevices;
         if(typeof media?.enumerateDevices!=='function'||typeof media?.getUserMedia!=='function'){
           report('MIC_CONSTRAINTS',{result:'unavailable'});return;
