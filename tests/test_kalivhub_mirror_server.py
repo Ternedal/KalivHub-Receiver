@@ -70,6 +70,19 @@ class ProtocolTests(unittest.TestCase):
         body, ts, sig = signed_payload(text="\x01bad")
         self.assertEqual(self.proto.accept(body, ts, sig)[0], 400)
 
+    def test_malformed_unicode_is_rejected_without_server_crash(self):
+        body, ts, sig = signed_payload(text="\\ud800")
+        self.assertEqual(self.proto.accept(body, ts, sig), (400, "invalid_text"))
+
+    def test_replay_cache_limit_is_bounded(self):
+        self.proto.max_seen = 1
+        first, ts, sig = signed_payload(text="first")
+        self.assertEqual(self.proto.accept(first, ts, sig)[0], 202)
+        self.queue.get_nowait()
+        second, ts2, sig2 = signed_payload(text="second")
+        self.assertEqual(self.proto.accept(second, ts2, sig2)[0], 503)
+        self.assertEqual(self.proto.accept(first, ts, sig)[0], 409)
+
     def test_queue_overflow_is_not_marked_replay(self):
         body, ts, sig = signed_payload(text="first")
         self.assertEqual(self.proto.accept(body, ts, sig)[0], 202)
