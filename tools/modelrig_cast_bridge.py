@@ -23,9 +23,11 @@ def main():
     parser.add_argument("--backend", default="http://127.0.0.1:8080/api/v1/chat")
     parser.add_argument("--token-env", default="MODELRIG_DEVICE_TOKEN")
     parser.add_argument("--model", required=True)
-    parser.add_argument("--prompt", required=True)
+    parser.add_argument("--prompt", help="Single-turn prompt (omit for interactive conversation)")
     parser.add_argument("--think", action="store_true", help="Enable model reasoning (disabled by default)")
     args = parser.parse_args()
+    if args.prompt is not None and not args.prompt.strip():
+        parser.error("--prompt cannot be empty")
     import os
     from urllib.parse import urlsplit
     host = ipaddress.ip_address(args.host)
@@ -71,32 +73,61 @@ def main():
                     return
                 time.sleep(0.1)
             raise RuntimeError("Missing receiver acknowledgement: " + expected)
-        send({"type": "SET_STATE", "state": "thinking"})
-        body = json.dumps({"model": args.model, "messages": [{"role": "user", "content": args.prompt}], "stream": False, "think": args.think, "options": {"num_predict": 256}}).encode("utf-8")
-        request = urllib.request.Request(args.backend, data=body, headers={"Content-Type": "application/json", "Authorization": "Bearer " + token}, method="POST")
-        try:
-            with urllib.request.urlopen(request, timeout=120) as response:
-                if response.status != 200:
-                    raise RuntimeError("Unexpected ModelRig status")
-                raw = response.read(1024 * 1024 + 1)
-                if len(raw) > 1024 * 1024:
-                    raise RuntimeError("ModelRig response too large")
-            answer = extract_answer(json.loads(raw))
-            if not answer.strip():
-                raise RuntimeError("ModelRig returned no answer")
-            send({"type": "SHOW_MESSAGE", "text": answer[:2000]})
-            send({"type": "SET_STATE", "state": "idle"})
-            print("ModelRig answer delivered to Cast (check RECEIVER acknowledgement).")
-        except urllib.error.HTTPError as exc:
-            details = exc.read(2048).decode("utf-8", errors="replace")
-            print("ModelRig HTTP status:", exc.code)
-            print("ModelRig error:", details)
-            send({"type": "SET_STATE", "state": "offline"})
-            raise SystemExit(1)
-        except Exception as exc:
-            send({"type": "SET_STATE", "state": "offline"})
-            print("ModelRig request failed:", type(exc).__name__)
-            raise SystemExit(1)
+        history = []
+        print("KalivHub connected. Type /exit to quit; /reset to clear local history.")
+        while True:
+            if args.prompt is not None:
+                prompt = args.prompt
+            else:
+                try:
+                    prompt = input("Du: ").strip()
+                except (EOFError, KeyboardInterrupt):
+                    print()
+                    break
+                if prompt == "/exit":
+                    break
+                if prompt == "/reset":
+                    history.clear()
+                    print("Local conversation reset.")
+                    continue
+                if not prompt:
+                    continue
+            try:
+                send({"type": "SET_STATE", "state": "thinking"})
+                messages = history + [{"role": "user", "content": prompt}]
+                body = json.dumps({"model": args.model, "messages": messages, "stream": False, "think": args.think, "options": {"num_predict": 256}}).encode("utf-8")
+                request = urllib.request.Request(args.backend, data=body, headers={"Content-Type": "application/json", "Authorization": "Bearer " + token}, method="POST")
+                with urllib.request.urlopen(request, timeout=120) as response:
+                    if response.status != 200:
+                        raise RuntimeError("Unexpected ModelRig status")
+                    raw = response.read(1024 * 1024 + 1)
+                    if len(raw) > 1024 * 1024:
+                        raise RuntimeError("ModelRig response too large")
+                answer = extract_answer(json.loads(raw))
+                if not answer.strip():
+                    raise RuntimeError("ModelRig returned no answer")
+                send({"type": "SHOW_MESSAGE", "text": answer[:2000]})
+                send({"type": "SET_STATE", "state": "idle"})
+                print("Kaliv:", answer)
+                history.extend(({"role": "user", "content": prompt}, {"role": "assistant", "content": answer}))
+                if len(history) > 20:
+                    history = history[-20:]
+            except urllib.error.HTTPError as exc:
+                details = exc.read(2048).decode("utf-8", errors="replace")
+                print("ModelRig HTTP status:", exc.code)
+                print("ModelRig error:", details)
+                try:
+                    send({"type": "SET_STATE", "state": "offline"})
+                except Exception:
+                    pass
+            except Exception as exc:
+                print("ModelRig/Cast request failed:", type(exc).__name__, str(exc))
+                try:
+                    send({"type": "SET_STATE", "state": "offline"})
+                except Exception:
+                    pass
+            if args.prompt is not None:
+                break
     finally:
         cast.disconnect()
 
