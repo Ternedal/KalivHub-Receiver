@@ -98,7 +98,9 @@ class ProtocolTests(unittest.TestCase):
         self.assertTrue(private_lan_ipv4("10.0.0.3"))
         self.assertTrue(private_lan_ipv4("100.100.1.2"))
         for bad in ("0.0.0.0", "127.0.0.1", "8.8.8.8",
-                    "169.254.2.4", "kaliv.example.org", "::1", "224.0.0.1"):
+                    "169.254.2.4", "kaliv.example.org", "::1", "224.0.0.1",
+                    "192.0.2.10", "198.18.0.1", "255.255.255.255",
+                    "172.32.0.1", "192.168.1.013"):
             with self.subTest(bad=bad):
                 self.assertFalse(private_lan_ipv4(bad))
 
