@@ -24,6 +24,7 @@ def main():
     parser.add_argument("--token-env", default="MODELRIG_DEVICE_TOKEN")
     parser.add_argument("--model", required=True)
     parser.add_argument("--prompt", required=True)
+    parser.add_argument("--think", action="store_true", help="Enable model reasoning (disabled by default)")
     args = parser.parse_args()
     import os
     from urllib.parse import urlsplit
@@ -71,7 +72,7 @@ def main():
                 time.sleep(0.1)
             raise RuntimeError("Missing receiver acknowledgement: " + expected)
         send({"type": "SET_STATE", "state": "thinking"})
-        body = json.dumps({"model": args.model, "messages": [{"role": "user", "content": args.prompt}], "stream": False}).encode("utf-8")
+        body = json.dumps({"model": args.model, "messages": [{"role": "user", "content": args.prompt}], "stream": False, "think": args.think, "options": {"num_predict": 256}}).encode("utf-8")
         request = urllib.request.Request(args.backend, data=body, headers={"Content-Type": "application/json", "Authorization": "Bearer " + token}, method="POST")
         try:
             with urllib.request.urlopen(request, timeout=120) as response:
