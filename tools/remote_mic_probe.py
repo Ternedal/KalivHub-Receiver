@@ -11,8 +11,11 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument("--host", required=True)
     p.add_argument("--app-id", default="E975D483")
-    p.add_argument("--command", choices=("GET_STATUS", "GET_DEVICES", "PROBE_CONSTRAINTS", "START_MIC_TEST", "STOP_MIC_TEST"), default="START_MIC_TEST")
+    p.add_argument("--command", choices=("GET_STATUS", "GET_DEVICES", "PROBE_CONSTRAINTS", "SHOW_MESSAGE", "CLEAR_MESSAGE", "START_MIC_TEST", "STOP_MIC_TEST"), default="START_MIC_TEST")
+    p.add_argument("--text", help="Text to display on Nest Hub (SHOW_MESSAGE only)")
     args = p.parse_args()
+    if args.command == "SHOW_MESSAGE" and (not args.text or len(args.text) > 2000):
+        p.error("--text is required for SHOW_MESSAGE (1–2000 characters)")
     addr = ipaddress.ip_address(args.host)
     if not (addr.is_private and not addr.is_loopback and not addr.is_link_local):
         p.error("Use a private LAN IP address")
@@ -36,7 +39,10 @@ def main():
             cast.start_app(args.app_id)
             time.sleep(3)
         print("Sender", args.command, "til", addr, flush=True)
-        ctrl.send_message({"type": args.command})
+        payload = {"type": args.command}
+        if args.command == "SHOW_MESSAGE":
+            payload["text"] = args.text
+        ctrl.send_message(payload)
         time.sleep(13 if args.command == "START_MIC_TEST" else 4)
         print("Cast app:", cast.status.app_id if cast.status else "unknown", flush=True)
         print("Ingen respons betyder ikke, at mikrofonen virker.", flush=True)
