@@ -75,7 +75,29 @@ try {
     receiver=window.cast.framework.CastReceiverContext.getInstance();
     receiver.addCustomMessageListener(NS,event=>{
       const type=event?.data?.type;
-      if(type==='GET_DEVICES'){
+      if(type==='PROBE_CONSTRAINTS'){
+        const media=navigator.mediaDevices;
+        if(typeof media?.enumerateDevices!=='function'||typeof media?.getUserMedia!=='function'){
+          report('MIC_CONSTRAINTS',{result:'unavailable'});return;
+        }
+        void (async()=>{
+          const devices=await media.enumerateDevices();
+          const audio=devices.filter(d=>d.kind==='audioinput');
+          const variants=[['default',{audio:true,video:false}],['ideal',{audio:{deviceId:{ideal:audio[0]?.deviceId||''}},video:false}]];
+          if(audio[0]?.deviceId)variants.push(['exact',{audio:{deviceId:{exact:audio[0].deviceId}},video:false}]);
+          report('MIC_CONSTRAINTS',{result:'started',audioinputs:audio.length,supported:typeof media.getSupportedConstraints==='function'?{deviceId:Boolean(media.getSupportedConstraints().deviceId),sampleRate:Boolean(media.getSupportedConstraints().sampleRate)}:{}});
+          for(const [variant,constraints] of variants){
+            let captured=null;
+            try{
+              captured=await Promise.race([media.getUserMedia(constraints),new Promise((_,reject)=>setTimeout(()=>reject(new DOMException('Timeout','TimeoutError')),4000))]);
+              report('MIC_CONSTRAINTS',{variant,result:'opened',tracks:captured.getAudioTracks().length});
+            }catch(err){report('MIC_CONSTRAINTS',{variant,result:'error',name:err?.name||'Unknown'});}
+            finally{if(captured)captured.getTracks().forEach(t=>t.stop())}
+          }
+          report('MIC_CONSTRAINTS',{result:'finished'});
+        })().catch(err=>report('MIC_CONSTRAINTS',{result:'error',name:err?.name||'Unknown'}));
+      }
+      else if(type==='GET_DEVICES'){
         if(typeof navigator.mediaDevices?.enumerateDevices!=='function'){report('MIC_DEVICES',{result:'unavailable'});return}
         navigator.mediaDevices.enumerateDevices().then(devices=>{
           const kinds={audioinput:0,audiooutput:0,videoinput:0};
