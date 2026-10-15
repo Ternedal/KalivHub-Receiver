@@ -30,7 +30,7 @@ def main():
     if not host.is_private or host.is_loopback or host.is_link_local:
         parser.error("--host must be a private LAN IP")
     target = urlsplit(args.backend)
-    if target.scheme != "http" or target.hostname not in ("127.0.0.1", "localhost") or target.username or target.password or target.fragment:
+    if target.scheme != "http" or target.hostname not in ("127.0.0.1", "localhost") or target.username or target.password or target.fragment or target.query or target.port is None:
         parser.error("--backend must be an HTTP loopback endpoint")
     token = os.environ.get(args.token_env, "")
     if not token:
@@ -52,9 +52,23 @@ def main():
         if not cast.status or cast.status.app_id != args.app_id:
             cast.start_app(args.app_id)
             time.sleep(4)
+        acknowledgements = []
+        original_receive = display.receive_message
+        def collect(message, data):
+            if isinstance(data, dict):
+                acknowledgements.append(data)
+            return original_receive(message, data)
+        display.receive_message = collect
         def send(payload):
+            expected = "KALIV_DISPLAY" if payload["type"] == "SHOW_MESSAGE" else "KALIV_STATE"
             display.send_message(payload)
-            time.sleep(0.5)
+            deadline = time.monotonic() + 5
+            while time.monotonic() < deadline:
+                if any(x.get("type") == expected and x.get("result") in ("shown", "updated") for x in acknowledgements):
+                    acknowledgements.clear()
+                    return
+                time.sleep(0.1)
+            raise RuntimeError("Missing receiver acknowledgement: " + expected)
         send({"type": "SET_STATE", "state": "thinking"})
         body = json.dumps({"model": args.model, "messages": [{"role": "user", "content": args.prompt}], "stream": False}).encode("utf-8")
         request = urllib.request.Request(args.backend, data=body, headers={"Content-Type": "application/json", "Authorization": "Bearer " + token}, method="POST")
