@@ -31,14 +31,13 @@ def private_lan_ipv4(address: str) -> bool:
     """IP literals only; no public, link-local, unspecified or DNS targets."""
     try:
         ip = ipaddress.IPv4Address(address)
-        shared = ip in ipaddress.IPv4Network("100.64.0.0/10")
-        return (
-            not ip.is_loopback
-            and not ip.is_link_local
-            and not ip.is_multicast
-            and not ip.is_unspecified
-            and (ip.is_private or shared)
+        allowed = (
+            ipaddress.IPv4Network("10.0.0.0/8"),
+            ipaddress.IPv4Network("172.16.0.0/12"),
+            ipaddress.IPv4Network("192.168.0.0/16"),
+            ipaddress.IPv4Network("100.64.0.0/10"),  # Tailscale
         )
+        return any(ip in network for network in allowed)
     except (ipaddress.AddressValueError, ValueError):
         return False
 
