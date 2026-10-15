@@ -27,7 +27,8 @@ Kun et betroet privat netværk! HTTP-signaturen autentificerer, men KRYPTERER IK
 
 5. Begræns indgående TCP 8765 til telefonens/private LAN med Windows-firewall. Brug ikke 0.0.0.0.
 6. Installer senere test-APK'en fra GitHub Actions: den bruger det separate Android-id `dk.ternedal.modelrig.a425f`, så den ikke overskriver Kaliv-produktionsappen. Den skal parres med riggen særskilt. Vælg Nest Hub-spejling i chat-menuen, angiv http://YOUR_RIG_LAN_IP:8765, samme separate nøgle, og aktivér.
-7. Send en normal chatbesked og bekræft fysisk visning samt 'Cast display acknowledgement received' i rigkonsollen. Gentag med to ture, cloud, retry, voice og Nest Hub offline. Chat på telefonen skal fortsætte selv hvis displayet fejler.
+7. Brug først **Test**-knappen i Android-indstillingerne: appen bekræfter kun om riggens HTTP-modtager lagde beskeden i kø; kontrollér separat at Nest Hub faktisk viser 'KalivHub: forbindelsestest'.
+8. Send en normal chatbesked og bekræft fysisk visning samt 'Cast display acknowledgement received' i rigkonsollen. Gentag med to ture, cloud, retry, voice og Nest Hub offline. Chat på telefonen skal fortsætte selv hvis displayet fejler.
 
 ## Fejlfinding og gates
 
