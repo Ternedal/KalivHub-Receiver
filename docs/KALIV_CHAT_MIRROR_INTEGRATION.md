@@ -8,7 +8,7 @@ Implementeret, men ikke fysisk testet: Android-spejling og lokal LAN-modtager. A
 
 Android-spejlingen er slået FRA som standard. Den sender kun færdig assistenttekst, ikke brugerens spørgsmål, samtalehistorik eller ModelRig/cloud-adgangsnøgler. Et separat HMAC-secret bruges til signering og lagres krypteret på Android.
 
-Kun et betroet privat netværk! HTTP-signaturen autentificerer, men KRYpTERER IKKE teksten. Undgå følsomme svar på delt skærm. Den lokale modtager har anti-replay, 2000 UTF-16 tegnbegrænsning, bundet body og kø. HTTP 202 betyder kun lagt i kø; Cast-kvitteringen logges særskilt.
+Kun et betroet privat netværk! HTTP-signaturen autentificerer, men KRYPTERER IKKE teksten. Undgå følsomme svar på delt skærm. Den lokale modtager har anti-replay, 2000 UTF-16 tegnbegrænsning, bundet body og kø. HTTP 202 betyder kun lagt i kø; Cast-kvitteringen logges særskilt.
 
 ## Opsætning til næste fysiske testsession (IKKE nødvendigt at tænde riggen nu)
 
@@ -20,13 +20,13 @@ Kun et betroet privat netværk! HTTP-signaturen autentificerer, men KRYpTERER IK
     $env:KALIVHUB_MIRROR_SECRET = [Convert]::ToHexString($bytes).ToLowerInvariant()
     Get-NetIPAddress -AddressFamily IPv4 | Select-Object InterfaceAlias,IPAddress
 
-3. Gem den tilfældigt genererede nøgle sikkert til at indsætte i Android-appens Nest Hub-spejling-indstillinger. Undlad at dele den i chat/GitHub. Nøglen er kun i PowerShell-miljøet så længe sessionen varer.
+3. Vis nøglen KUN på din egen maskine med `$env:KALIVHUB_MIRROR_SECRET`. Gem den tilfældigt genererede nøgle sikkert til at indsætte i Android-appens Nest Hub-spejling-indstillinger. Undlad at dele den i chat/GitHub. Nøglen er kun i PowerShell-miljøet så længe sessionen varer.
 4. Start den lokale modtager (udskift YOUR_RIG_LAN_IP):
 
     py .\tools\kalivhub_mirror_server.py --cast-host 192.168.1.13 --bind YOUR_RIG_LAN_IP --port 8765 --allow-lan
 
 5. Begræns indgående TCP 8765 til telefonens/private LAN med Windows-firewall. Brug ikke 0.0.0.0.
-6. Installer senere en Android-testbuild fra draft-PR-branch, vælg Nest Hub-spejling i chat-menuen, angiv http://YOUR_RIG_LAN_IP:8765, samme separate nøgle, og aktivér.
+6. Installer senere test-APK'en fra GitHub Actions: den bruger det separate Android-id `dk.ternedal.modelrig.a425f`, så den ikke overskriver Kaliv-produktionsappen. Den skal parres med riggen særskilt. Vælg Nest Hub-spejling i chat-menuen, angiv http://YOUR_RIG_LAN_IP:8765, samme separate nøgle, og aktivér.
 7. Send en normal chatbesked og bekræft fysisk visning samt 'Cast display acknowledgement received' i rigkonsollen. Gentag med to ture, cloud, retry, voice og Nest Hub offline. Chat på telefonen skal fortsætte selv hvis displayet fejler.
 
 ## Fejlfinding og gates
