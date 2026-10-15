@@ -57,6 +57,7 @@ class MirrorProtocol:
         self.events = events
         self.lock = threading.Lock()
         self.seen: dict[str, float] = {}
+        self.max_seen = 4096
 
     def accept(self, raw: bytes, timestamp: str, signature: str, now: float | None = None) -> tuple[int, str]:
         if not raw or len(raw) > MAX_BODY:
@@ -80,7 +81,12 @@ class MirrorProtocol:
         if type(obj["version"]) is not int or obj["version"] != 1 or obj["type"] != "assistant_complete":
             return 400, "invalid_schema"
         text = obj["text"]
-        if not isinstance(text, str) or not text.strip() or utf16_units(text) > MAX_DISPLAY_UNITS:
+        if not isinstance(text, str) or not text.strip():
+            return 400, "invalid_text"
+        try:
+            if utf16_units(text) > MAX_DISPLAY_UNITS:
+                return 400, "invalid_text"
+        except UnicodeEncodeError:
             return 400, "invalid_text"
         if any(ord(ch) < 32 and ch not in "\r\n\t" for ch in text):
             return 400, "invalid_text"
@@ -98,6 +104,8 @@ class MirrorProtocol:
                     del self.seen[key]
             if event_id in self.seen:
                 return 409, "duplicate"
+            if len(self.seen) >= self.max_seen:
+                return 503, "busy"
             try:
                 self.events.put_nowait(text)
             except queue.Full:
