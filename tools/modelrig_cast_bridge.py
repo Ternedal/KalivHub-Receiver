@@ -4,6 +4,7 @@ import ipaddress
 import json
 import time
 import urllib.request
+import urllib.error
 
 NS = "urn:x-cast:com.kalivhub.micprobe"
 
@@ -85,6 +86,12 @@ def main():
             send({"type": "SHOW_MESSAGE", "text": answer[:2000]})
             send({"type": "SET_STATE", "state": "idle"})
             print("ModelRig answer delivered to Cast (check RECEIVER acknowledgement).")
+        except urllib.error.HTTPError as exc:
+            details = exc.read(2048).decode("utf-8", errors="replace")
+            print("ModelRig HTTP status:", exc.code)
+            print("ModelRig error:", details)
+            send({"type": "SET_STATE", "state": "offline"})
+            raise SystemExit(1)
         except Exception as exc:
             send({"type": "SET_STATE", "state": "offline"})
             print("ModelRig request failed:", type(exc).__name__)
