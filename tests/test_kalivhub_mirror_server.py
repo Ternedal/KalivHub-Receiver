@@ -11,6 +11,8 @@ import time
 import unittest
 import uuid
 from http.server import ThreadingHTTPServer
+from unittest.mock import patch
+from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 from kalivhub_mirror_server import (
@@ -112,6 +114,32 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual([msg["type"] for msg in recorded],
                          ["SET_STATE", "SHOW_MESSAGE", "SET_STATE"])
         self.assertEqual(recorded[1]["text"], "Hej")
+
+    def test_cast_retries_one_transient_transport_failure(self):
+        sender = CastSender("192.168.1.13", "E975D483")
+        sent = []
+        disconnected = []
+        def flaky(payload):
+            sent.append(payload["type"])
+            if payload["type"] == "SHOW_MESSAGE" and sent.count("SHOW_MESSAGE") == 1:
+                raise OSError("offline")
+        sender.send = flaky
+        sender.disconnect = lambda: disconnected.append(True)
+        with patch("kalivhub_mirror_server.time.sleep", return_value=None):
+            sender.show_answer("Velkommen")
+        self.assertEqual(sent, ["SET_STATE", "SHOW_MESSAGE", "SET_STATE",
+                                "SHOW_MESSAGE", "SET_STATE"])
+        self.assertEqual(disconnected, [True])
+
+    def test_cast_ack_type_and_display_length_are_checked(self):
+        sender = CastSender("192.168.1.13", "E975D483")
+        sender.connect = lambda: None
+        def incoming(payload):
+            sender.acks.put({"type": "KALIV_STATE", "state": "thinking", "result": "updated"})
+            sender.acks.put({"type": "KALIV_DISPLAY", "length": 99, "result": "shown"})
+            sender.acks.put({"type": "KALIV_DISPLAY", "length": 4, "result": "shown"})
+        sender.controller = SimpleNamespace(send_message=incoming)
+        sender.send({"type": "SHOW_MESSAGE", "text": "Hej!"})
 
 
 class HttpTests(unittest.TestCase):
