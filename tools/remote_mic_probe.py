@@ -11,7 +11,7 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument("--host", required=True)
     p.add_argument("--app-id", default="E975D483")
-    p.add_argument("--command", choices=("GET_STATUS", "GET_DEVICES", "START_MIC_TEST", "STOP_MIC_TEST"), default="START_MIC_TEST")
+    p.add_argument("--command", choices=("GET_STATUS", "GET_DEVICES", "PROBE_CONSTRAINTS", "START_MIC_TEST", "STOP_MIC_TEST"), default="START_MIC_TEST")
     args = p.parse_args()
     addr = ipaddress.ip_address(args.host)
     if not (addr.is_private and not addr.is_loopback and not addr.is_link_local):
