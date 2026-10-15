@@ -75,7 +75,15 @@ try {
     receiver=window.cast.framework.CastReceiverContext.getInstance();
     receiver.addCustomMessageListener(NS,event=>{
       const type=event?.data?.type;
-      if(type==='GET_STATUS')report('MIC_STATUS',{secure:window.isSecureContext,api:typeof navigator.mediaDevices?.getUserMedia,active:Boolean(stream),frames,peak});
+      if(type==='GET_DEVICES'){
+        if(typeof navigator.mediaDevices?.enumerateDevices!=='function'){report('MIC_DEVICES',{result:'unavailable'});return}
+        navigator.mediaDevices.enumerateDevices().then(devices=>{
+          const kinds={audioinput:0,audiooutput:0,videoinput:0};
+          for(const device of devices){if(Object.prototype.hasOwnProperty.call(kinds,device.kind))kinds[device.kind]++}
+          report('MIC_DEVICES',{result:'ok',...kinds});
+        }).catch(err=>report('MIC_DEVICES',{result:'error',name:err?.name||'Unknown'}));
+      }
+      else if(type==='GET_STATUS')report('MIC_STATUS',{secure:window.isSecureContext,api:typeof navigator.mediaDevices?.getUserMedia,active:Boolean(stream),frames,peak});
       else if(type==='START_MIC_TEST'){report('MIC_STATUS',{result:'start_requested'});$('start').click()}
       else if(type==='STOP_MIC_TEST'){void stop();report('MIC_STATUS',{result:'stop_requested'})}
     });
