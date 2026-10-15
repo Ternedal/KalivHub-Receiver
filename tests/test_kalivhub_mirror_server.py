@@ -71,8 +71,10 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(self.proto.accept(body, ts, sig)[0], 400)
 
     def test_malformed_unicode_is_rejected_without_server_crash(self):
-        body, ts, sig = signed_payload(text="\\ud800")
-        self.assertEqual(self.proto.accept(body, ts, sig), (400, "invalid_text"))
+        raw = b'{"version":1,"type":"assistant_complete","event_id":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa","text":"\\uD800"}'
+        ts = str(int(time.time()))
+        sig = "v1=" + hmac.new(SECRET.encode(), ts.encode() + b"\n" + raw, hashlib.sha256).hexdigest()
+        self.assertEqual(self.proto.accept(raw, ts, sig), (400, "invalid_text"))
 
     def test_replay_cache_limit_is_bounded(self):
         self.proto.max_seen = 1
