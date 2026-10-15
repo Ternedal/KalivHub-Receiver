@@ -45,11 +45,9 @@ class LauncherTests(unittest.TestCase):
 
     def test_launch_and_disconnect(self):
         state = []
-        class Receiver:
-            def launch_app(self, app_id):
-                state.append(("launch", app_id))
         class Cast:
-            receiver_controller = Receiver()
+            def start_app(self, app_id):
+                state.append(("launch", app_id))
             def __init__(self, host):
                 state.append(("connect", host))
             def wait(self, timeout):
@@ -69,11 +67,9 @@ class LauncherTests(unittest.TestCase):
 
     def test_disconnect_after_launch_error(self):
         state = []
-        class Receiver:
-            def launch_app(self, app_id):
-                raise RuntimeError("cast unavailable")
         class Cast:
-            receiver_controller = Receiver()
+            def start_app(self, app_id):
+                raise RuntimeError("cast unavailable")
             def __init__(self, host):
                 pass
             def wait(self, timeout):
