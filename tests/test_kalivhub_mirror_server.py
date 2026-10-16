@@ -193,10 +193,12 @@ class ProtocolTests(unittest.TestCase):
         sig = "v1=" + hmac.new(
             SECRET.encode(), ts.encode() + b"\n" + raw, hashlib.sha256
         ).hexdigest()
-        self.assertEqual(
-            self.proto.accept(raw, ts, sig),
-            (400, "invalid_json"),
-        )
+        code, reason = self.proto.accept(raw, ts, sig)
+        self.assertEqual(code, 400)
+        # JSON decoders differ in their maximum nesting depth across platforms.
+        # Some parse this valid JSON and then reject the top-level list shape;
+        # others stop at the recursion limit. Both fail closed.
+        self.assertIn(reason, ("invalid_json", "invalid_schema"))
         self.assertTrue(self.queue.empty())
 
     def test_bad_schema_after_auth_is_rejected(self):
@@ -681,7 +683,9 @@ class ProtocolTests(unittest.TestCase):
             })
         sender.controller = SimpleNamespace(send_message=receive)
         sender.clear_message()
-        self.assertEqual(observed, [{"type": "CLEAR_MESSAGE"}])
+        self.assertEqual(len(observed), 1)
+        self.assertEqual(observed[0]["type"], "CLEAR_MESSAGE")
+        self.assertRegex(observed[0]["request_id"], r"^[0-9a-f]{32}$")
 
     def test_wrong_ack_result_cannot_complete_other_display_command(self):
         sender = CastSender("192.168.1.13", "E975D483")
