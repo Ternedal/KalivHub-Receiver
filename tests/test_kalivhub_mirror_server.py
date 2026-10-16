@@ -295,6 +295,54 @@ class ProtocolTests(unittest.TestCase):
                                 "SHOW_MESSAGE", "SET_STATE"])
         self.assertEqual(disconnected, [True])
 
+    def test_disconnect_resets_per_session_ack_buffer_and_correlation(self):
+        sender = CastSender("192.168.1.13", "E975D483")
+        original_acks = sender.acks
+        disconnected = []
+        class FakeCast:
+            def disconnect(self):
+                disconnected.append(True)
+        sender.cast = FakeCast()
+        sender.controller = object()
+        sender.correlated_acks = True
+        original_acks.put({"type": "KALIV_DISPLAY", "result": "shown"})
+        sender.disconnect()
+        self.assertEqual(disconnected, [True])
+        self.assertIsNone(sender.cast)
+        self.assertIsNone(sender.controller)
+        self.assertFalse(sender.correlated_acks)
+        self.assertIsNot(sender.acks, original_acks)
+        self.assertTrue(sender.acks.empty())
+        self.assertEqual(original_acks.qsize(), 1)
+
+    def test_disconnect_failure_does_not_mask_retry_error(self):
+        sender = CastSender("192.168.1.13", "E975D483")
+        class BrokenCast:
+            def disconnect(self):
+                raise OSError("network link already broken")
+        sender.cast = BrokenCast()
+        sender.correlated_acks = True
+        sender.disconnect()
+        self.assertIsNone(sender.cast)
+        self.assertFalse(sender.correlated_acks)
+
+    def test_unsolicited_mismatched_id_does_not_claim_correlation(self):
+        sender = CastSender("192.168.1.13", "E975D483")
+        sender.connect = lambda: None
+        def send(payload):
+            sender.acks.put({
+                "type": "KALIV_DIAGNOSTICS", "result": "updated",
+                "request_id": "a" * 32,
+            })
+            # The current deployed receiver still uses legacy ACKs.
+            sender.acks.put({
+                "type": "KALIV_STATE", "result": "updated",
+                "state": payload["state"],
+            })
+        sender.controller = SimpleNamespace(send_message=send)
+        sender.send({"type": "SET_STATE", "state": "thinking"})
+        self.assertFalse(sender.correlated_acks)
+
     def test_correlated_cast_ack_matches_only_this_command(self):
         sender = CastSender("192.168.1.13", "E975D483")
         sender.connect = lambda: None
