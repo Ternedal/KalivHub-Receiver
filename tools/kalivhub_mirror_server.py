@@ -124,6 +124,11 @@ class MirrorProtocol:
         ).hexdigest()
         if not hmac.compare_digest(expected, signature):
             return 401, "unauthorized"
+        # An authenticated event may have waited in transport before arrival.
+        # Honor its signed creation time, not merely when it entered the queue.
+        signed_age = max(0.0, current - int(timestamp))
+        if signed_age >= MAX_PENDING_SECONDS:
+            return 410, "expired"
         try:
             obj = json.loads(raw.decode("utf-8"),
                              object_pairs_hook=reject_duplicate_json_keys)
@@ -160,7 +165,9 @@ class MirrorProtocol:
             if len(self.seen) >= self.max_seen:
                 return 503, "busy"
             try:
-                self.events.put_nowait(PendingReply(text, time.monotonic()))
+                self.events.put_nowait(
+                    PendingReply(text, time.monotonic() - signed_age)
+                )
             except queue.Full:
                 return 503, "busy"
             self.seen[event_id] = current + 2 * SKEW_SECONDS
