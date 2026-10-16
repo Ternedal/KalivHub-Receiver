@@ -424,21 +424,54 @@ class ProtocolTests(unittest.TestCase):
                          ["SET_STATE", "SHOW_MESSAGE", "SET_STATE"])
         self.assertEqual(recorded[1]["text"], "Hej")
 
-    def test_cast_retries_one_transient_transport_failure(self):
+    def test_cast_retries_only_pre_display_transient_failure(self):
         sender = CastSender("192.168.1.13", "E975D483")
         sent = []
         disconnected = []
         def flaky(payload):
             sent.append(payload["type"])
-            if payload["type"] == "SHOW_MESSAGE" and sent.count("SHOW_MESSAGE") == 1:
+            if payload["type"] == "SET_STATE" and len(sent) == 1:
                 raise OSError("offline")
         sender.send = flaky
         sender.disconnect = lambda: disconnected.append(True)
         with patch("kalivhub_mirror_server.time.sleep", return_value=None):
             sender.show_answer("Velkommen")
-        self.assertEqual(sent, ["SET_STATE", "SHOW_MESSAGE", "SET_STATE",
-                                "SHOW_MESSAGE", "SET_STATE"])
+        self.assertEqual(sent, ["SET_STATE", "SET_STATE", "SHOW_MESSAGE", "SET_STATE"])
         self.assertEqual(disconnected, [True])
+
+    def test_lost_display_ack_never_replays_completed_reply(self):
+        sender = CastSender("192.168.1.13", "E975D483")
+        sent = []
+        disconnects = []
+        def lose_ack(payload):
+            sent.append(payload["type"])
+            if payload["type"] == "SHOW_MESSAGE":
+                raise TimeoutError("reply may already be displayed")
+        sender.send = lose_ack
+        sender.disconnect = lambda: disconnects.append(True)
+        with patch("kalivhub_mirror_server.time.sleep") as sleep:
+            with self.assertRaisesRegex(TimeoutError, "already be displayed"):
+                sender.show_answer("Dette svar må kun vises én gang")
+        self.assertEqual(sent.count("SHOW_MESSAGE"), 1)
+        self.assertEqual(sent, ["SET_STATE", "SHOW_MESSAGE"])
+        self.assertEqual(disconnects, [True])
+        sleep.assert_not_called()
+
+    def test_idle_ack_failure_does_not_resend_already_shown_reply(self):
+        sender = CastSender("192.168.1.13", "E975D483")
+        sent = []
+        disconnects = []
+        def idle_failure(payload):
+            sent.append(payload["type"])
+            if payload["type"] == "SET_STATE" and payload["state"] == "idle":
+                raise TimeoutError("idle ACK lost")
+        sender.send = idle_failure
+        sender.disconnect = lambda: disconnects.append(True)
+        with patch("kalivhub_mirror_server.time.sleep") as sleep:
+            sender.show_answer("Vis mig én gang")
+        self.assertEqual(sent, ["SET_STATE", "SHOW_MESSAGE", "SET_STATE"])
+        self.assertEqual(disconnects, [True])
+        sleep.assert_not_called()
 
     def test_disconnect_resets_per_session_ack_buffer_and_correlation(self):
         sender = CastSender("192.168.1.13", "E975D483")
