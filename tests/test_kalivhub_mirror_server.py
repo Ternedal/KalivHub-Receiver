@@ -97,6 +97,34 @@ class ProtocolTests(unittest.TestCase):
         altered = body.replace(b"Hej fra Kaliv", b"Snyd")
         self.assertEqual(self.proto.accept(altered, ts, sig)[0], 401)
 
+    def test_duplicate_signed_json_keys_are_rejected(self):
+        raw = (
+            '{"version":1,"type":"assistant_complete",'
+            '"event_id":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",'
+            '"text":"public","text":"private"}'
+        ).encode()
+        timestamp = str(int(time.time()))
+        sig = "v1=" + hmac.new(
+            SECRET.encode(), timestamp.encode() + b"\n" + raw, hashlib.sha256
+        ).hexdigest()
+        self.assertEqual(
+            self.proto.accept(raw, timestamp, sig),
+            (400, "invalid_json"),
+        )
+        self.assertTrue(self.queue.empty())
+
+    def test_excessively_nested_signed_json_does_not_crash_server(self):
+        raw = (b"[" * 1500) + b"1" + (b"]" * 1500)
+        ts = str(int(time.time()))
+        sig = "v1=" + hmac.new(
+            SECRET.encode(), ts.encode() + b"\n" + raw, hashlib.sha256
+        ).hexdigest()
+        self.assertEqual(
+            self.proto.accept(raw, ts, sig),
+            (400, "invalid_json"),
+        )
+        self.assertTrue(self.queue.empty())
+
     def test_bad_schema_after_auth_is_rejected(self):
         body = json.dumps({"version": 1, "type": "assistant_complete", "text": "Hej"}).encode()
         ts = str(int(time.time()))
@@ -629,6 +657,25 @@ class HttpTests(unittest.TestCase):
         self.assertEqual(code, 401)
         self.assertEqual(json.loads(data)["status"], "unauthorized")
         self.assertTrue(self.events.empty())
+
+    def test_oversized_numeric_content_length_is_rejected_without_integer_parse(self):
+        body, ts, sig = signed_payload()
+        client = http.client.HTTPConnection(
+            "127.0.0.1", self.server.server_port, timeout=5
+        )
+        try:
+            client.putrequest("POST", "/v1/events")
+            client.putheader("Content-Type", "application/json")
+            client.putheader("Content-Length", "9" * 5000)
+            client.putheader("X-Kaliv-Timestamp", ts)
+            client.putheader("X-Kaliv-Signature", sig)
+            client.endheaders()
+            response = client.getresponse()
+            self.assertEqual(response.status, 413)
+            self.assertEqual(json.loads(response.read())["status"], "invalid_request")
+            self.assertTrue(self.events.empty())
+        finally:
+            client.close()
 
     def test_duplicate_security_headers_are_rejected_before_reading_body(self):
         body, ts, sig = signed_payload("Hej")
