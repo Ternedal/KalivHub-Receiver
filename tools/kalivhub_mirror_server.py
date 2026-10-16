@@ -389,50 +389,58 @@ def post_signed_selftest(bind: str, port: int, secret: str) -> int:
         return response.status
 
 
+def display_worker(pending: queue.Queue, sender, clear_after_seconds: float = 0,
+                   stop_event: threading.Event | None = None):
+    """One owner for Cast: serialized output and optional no-race auto-clear.
+
+    stop_event supports deterministic offline tests; the production daemon
+    remains blocking when auto-clear is disabled.
+    """
+    clear_at = None
+    while stop_event is None or not stop_event.is_set():
+        wait = None if clear_at is None else max(0.0, clear_at - time.monotonic())
+        if stop_event is not None:
+            wait = 0.05 if wait is None else min(wait, 0.05)
+        try:
+            answer = pending.get(timeout=wait) if wait is not None else pending.get()
+        except queue.Empty:
+            if clear_at is None or time.monotonic() < clear_at:
+                continue
+            try:
+                sender.clear_message()
+                print("Expired display cleared on Cast", flush=True)
+            except Exception as exc:
+                sender.disconnect()
+                print("Cast display clear failed:", type(exc).__name__, flush=True)
+            finally:
+                clear_at = None
+            continue
+        try:
+            if deliver_pending(sender, answer):
+                print("Cast display acknowledgement received", flush=True)
+                clear_at = (time.monotonic() + clear_after_seconds
+                            if clear_after_seconds else None)
+            else:
+                print("Expired Cast display event discarded", flush=True)
+        except ExpiredReply:
+            print("Expired Cast display event discarded", flush=True)
+        except Exception as exc:
+            print("Cast mirror failed:", type(exc).__name__, flush=True)
+        finally:
+            pending.task_done()
+
+
 def serve(cast_host: str, app_id: str, bind: str, port: int, secret: str,
           startup_test: bool = False, clear_after_seconds: int = 0):
     pending: queue.Queue = queue.Queue(maxsize=16)
     protocol = MirrorProtocol(secret, pending)
     sender = CastSender(cast_host, app_id)
 
-    def worker():
-        clear_at = None
-        while True:
-            # A clear timer is strictly optional (default off). Re-use the
-            # existing single Cast worker so a delayed clear cannot race with
-            # a newer answer and erase it.
-            wait = None if clear_at is None else max(0.0, clear_at - time.monotonic())
-            try:
-                answer = pending.get(timeout=wait) if wait is not None else pending.get()
-            except queue.Empty:
-                if clear_at is not None:
-                    try:
-                        sender.clear_message()
-                        print("Expired display cleared on Cast", flush=True)
-                    except Exception as exc:
-                        sender.disconnect()
-                        print("Cast display clear failed:", type(exc).__name__, flush=True)
-                    finally:
-                        clear_at = None
-                continue
-            try:
-                if deliver_pending(sender, answer):
-                    print("Cast display acknowledgement received", flush=True)
-                    clear_at = (time.monotonic() + clear_after_seconds
-                                if clear_after_seconds else None)
-                else:
-                    print("Expired Cast display event discarded", flush=True)
-            except ExpiredReply:
-                print("Expired Cast display event discarded", flush=True)
-            except Exception as exc:
-                # Chat itself is not affected by Cast network failures.
-                print("Cast mirror failed:", type(exc).__name__, flush=True)
-            finally:
-                pending.task_done()
-
     BoundedHttpServer.allow_reuse_address = True
     server = BoundedHttpServer((bind, port), build_handler(protocol))
-    threading.Thread(target=worker, name="kalivhub-cast", daemon=True).start()
+    threading.Thread(target=display_worker,
+                     args=(pending, sender, clear_after_seconds),
+                     name="kalivhub-cast", daemon=True).start()
     print(f"KalivHub mirror listening on {bind}:{port} (Cast {cast_host}); opt-in only", flush=True)
     if startup_test:
         def run_self_test():
