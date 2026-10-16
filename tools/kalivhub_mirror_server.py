@@ -290,20 +290,23 @@ class CastSender:
             raise
 
     def disconnect(self):
-        if self.cast is not None:
-            self.cast.disconnect()
+        # Reset the transport *before* disconnecting its socket: callbacks
+        # from an older Cast session must not satisfy a new session's ACKs.
+        cast = self.cast
         self.cast = None
         self.controller = None
+        self.correlated_acks = False
+        self.acks = queue.Queue(maxsize=64)
+        if cast is not None:
+            try:
+                cast.disconnect()
+            except Exception:
+                # Never mask the original Cast delivery/retry failure.
+                pass
 
     def send(self, payload: dict) -> None:
-        self.connect()
-        while True:
-            try:
-                self.acks.get_nowait()
-            except queue.Empty:
-                break
-        # Validate the command before sending. Clear-message ACKs differ from
-        # show-message ACKs even though they share the KALIV_DISPLAY channel.
+        # Reject unknown commands without launching a Cast app or opening a
+        # network connection.
         command = payload.get("type")
         if command == "SHOW_MESSAGE":
             expected_type, expected_result = "KALIV_DISPLAY", "shown"
@@ -319,6 +322,12 @@ class CastSender:
                 return True
         else:
             raise ValueError("Unsupported Cast display command")
+        self.connect()
+        while True:
+            try:
+                self.acks.get_nowait()
+            except queue.Empty:
+                break
         # The deployed legacy receiver does not echo command IDs. The new
         # receiver does; once observed, never downgrade the process back to
         # accepting ambiguous legacy ACKs.
@@ -331,9 +340,14 @@ class CastSender:
             except queue.Empty:
                 continue
             ack_id = ack.get("request_id")
-            if ack_id is not None:
+            # Unsolicited diagnostics and stale messages may carry an ID.
+            # Enable strict correlation only when the receiver proves it
+            # can echo our *current* command. Do not trust arbitrary IDs.
+            if ack_id == request_id:
                 self.correlated_acks = True
             if self.correlated_acks and ack_id != request_id:
+                continue
+            if ack_id is not None and ack_id != request_id:
                 continue
             if (ack.get("type") == expected_type
                     and ack.get("result") == expected_result and matching(ack)):
