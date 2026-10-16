@@ -1,41 +1,63 @@
-# KalivHub: automatisk spejling af Kaliv-svar
+# KalivHub – automatisk, frivillig spejling af Kaliv-svar
 
-## Status – 15. oktober 2026
+## Status (16. oktober 2026)
 
-Fysisk testet: Nest Hub 2 viser SET_STATE og SHOW_MESSAGE efter ModelRig-chat; to samtaleture med hukommelse bestået.
+**Verificeret fysisk:** Google Nest Hub 2 modtog `SHOW_MESSAGE` og `SET_STATE` fra ModelRig; to sammenhængende chatbeskeder og samtalekontekst virkede. Mikrofonadgang via Cast Web Receiver gav `NotFoundError` og bruges **ikke** til automatisk spejling.
 
-Implementeret, men ikke fysisk testet: Android-spejling og lokal LAN-modtager. Android-koden ligger i draft PR https://github.com/Ternedal/ModelRig/pull/2206 på feature/kalivhub-android-mirror-optin-20261015. Python-modtageren ligger i tools/kalivhub_mirror_server.py på test/nest-hub-microphone-probe. Ingen produktion-main er ændret.
+**Implementeret og CI-testet, men endnu ikke fysisk valideret:** Android sender færdige assistentsvar som autentificerede, afgrænsede events til riggens lokale KalivHub-modtager. Modtageren spejler beskederne på Nest Hub uden et ekstra modelkald.
 
-Android-spejlingen er slået FRA som standard. Den sender kun færdig assistenttekst, ikke brugerens spørgsmål, samtalehistorik eller ModelRig/cloud-adgangsnøgler. Et separat HMAC-secret bruges til signering og lagres krypteret på Android.
+- [Kaliv Android draft-PR #2206](https://github.com/Ternedal/ModelRig/pull/2206) – branch `feature/kalivhub-android-mirror-optin-20261015`.
+- [KalivHub Receiver draft-PR #3](https://github.com/Ternedal/KalivHub-Receiver/pull/3) – branch `test/nest-hub-microphone-probe`.
+- Android-kompilering, enhedstests, CodeQL, exact-head-kvalificering og separat test-APK: **PASS** på PR-head `e19bca5`.
+- Receiver JavaScript, mikrofon-diagnostik og mirror-protokoltests: **PASS** på tidligere head; kontroller seneste workflow-status ved senere ændringer.
+- Ingen merge til `main`; ingen produktions-APK er ændret.
 
-Kun et betroet privat netværk! HTTP-signaturen autentificerer, men KRYPTERER IKKE teksten. Undgå følsomme svar på delt skærm. Den lokale modtager har anti-replay, 2000 UTF-16 tegnbegrænsning, bundet body og kø. HTTP 202 betyder kun lagt i kø; Cast-kvitteringen logges særskilt.
+## Test, når riggen tændes igen
 
-## Opsætning til næste fysiske testsession (IKKE nødvendigt at tænde riggen nu)
+**1. Opdater KalivHub-testbranchen.**
 
-1. Opdater KalivHub-Receiver på test/nest-hub-microphone-probe med git pull --ff-only.
-2. Kør nedenstående i PowerShell på riggen. Vælg riggens private LAN-IP til --bind, IKKE Nest Hubs IP:
+```powershell
+cd C:\Rig\src\KalivHub-Receiver
+git switch test/nest-hub-microphone-probe
+git pull --ff-only
+```
 
-    $bytes = [byte[]]::new(32)
-    [Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
-    $env:KALIVHUB_MIRROR_SECRET = [Convert]::ToHexString($bytes).ToLowerInvariant()
-    Get-NetIPAddress -AddressFamily IPv4 | Select-Object InterfaceAlias,IPAddress
+**2. Start lokal modtager med én kommando.**
 
-3. Vis nøglen KUN på din egen maskine med `$env:KALIVHUB_MIRROR_SECRET`. Gem den tilfældigt genererede nøgle sikkert til at indsætte i Android-appens Nest Hub-spejling-indstillinger. Undlad at dele den i chat/GitHub. Nøglen er kun i PowerShell-miljøet så længe sessionen varer.
-4. Start den lokale modtager (udskift YOUR_RIG_LAN_IP):
+```powershell
+pwsh -NoProfile -File .\tools\start-kalivhub-mirror.ps1 -ShowSecret
+```
 
-    py .\tools\kalivhub_mirror_server.py --cast-host 192.168.1.13 --bind YOUR_RIG_LAN_IP --port 8765 --allow-lan
+Windows-starteren opretter en separat tilfældig 256-bit HMAC-nøgle første gang og gemmer den krypteret via Windows DPAPI (`CurrentUser`) på `%LOCALAPPDATA%\KalivHub\mirror-secret.dpapi`. Senere genstarter som **samme Windows-bruger** anvender den samme nøgle. Den kan vises lokalt med `-ShowSecret`, men må aldrig kopieres ind i GitHub, chat eller logs.
 
-5. Begræns indgående TCP 8765 til telefonens/private LAN med Windows-firewall. Brug ikke 0.0.0.0.
-6. Installer senere test-APK'en fra GitHub Actions: den bruger det separate Android-id `dk.ternedal.modelrig.a425f`, så den ikke overskriver Kaliv-produktionsappen. Den skal parres med riggen særskilt. Vælg Nest Hub-spejling i chat-menuen, angiv http://YOUR_RIG_LAN_IP:8765, samme separate nøgle, og aktivér.
-7. Brug først **Test**-knappen i Android-indstillingerne: appen bekræfter kun om riggens HTTP-modtager lagde beskeden i kø; kontrollér separat at Nest Hub faktisk viser 'KalivHub: forbindelsestest'.
-8. Send en normal chatbesked og bekræft fysisk visning samt 'Cast display acknowledgement received' i rigkonsollen. Gentag med to ture, cloud, retry, voice og Nest Hub offline. Chat på telefonen skal fortsætte selv hvis displayet fejler.
+Starteren finder selv den lokale IP-adresse, som riggen ville bruge til at nå Nest Hub på `192.168.1.13`; IP-valget udsender **ingen** UDP-datapakke. Den åbner kun denne specifikke private IPv4-adresse på TCP-port `8765`. Den opretter **ingen** Windows-firewallregel og ændrer ikke riggens ModelRig-worker, Ollama eller produktionsservices.
 
-## Fejlfinding og gates
+Se efter loglinjen `KalivHub mirror listening on X.X.X.X:8765`; adressen `X.X.X.X` er **riggens** LAN-adresse. Brug denne adresse i Android, ikke Nest Hubs IP. Hvis Windows-firewall blokerer forbindelsen, tillad kun TCP `8765` fra telefonen/det betroede private net (begræns gerne til telefonens IP). Undgå offentlig portåbning, port-forwarding og `0.0.0.0`.
 
-- GET /healthz betyder kun at den lokale HTTP-modtager kører; det siger intet om Cast.
-- HTTP 401: forkert secret/ur/signeret body. 409: duplicate. 503: køen fuld.
-- Kør offline-tests: py -m unittest discover -s tests -p test_kalivhub_mirror_server.py -v.
-- Android: cd android; .\gradlew.bat :app:compileDebugKotlin :app:testDebugUnitTest.
-- Ingen merge/main/release uden grøn CI, review og fysisk telefon → rig → Nest Hub accepttest.
+For at stoppe: tryk Ctrl+C i PowerShell. Serveren kører ikke automatisk som en baggrundsservice.
 
-Den gamle tools/modelrig_cast_bridge.py er fortsat til frivillig PowerShell-diagnostik, men Android-spejlingen foretager ingen ekstra LLM-kald.
+**3. Installer isoleret Android-testbuild, når der skal fysisk testes.**
+
+Seneste verificerede test-APK kan hentes i [GitHub Actions-build #38813378802](https://github.com/Ternedal/ModelRig/actions/runs/38813378802). Artefaktet hedder `kalivhub-mirror-android-a425f-test-apk` og indeholder `app-a425f.apk`. GitHub har oplyst udløb **29. oktober 2026**. Appens separate id er `dk.ternedal.modelrig.a425f`: den installeres ved siden af normal Kaliv og skal parres med riggen separat.
+
+I testappen: åbn chatmenuen → **Nest Hub-spejling**. Indtast `http://X.X.X.X:8765` (riggens faktiske LAN-IP), og indsæt samme spejlingsnøgle fra PowerShell. Aktivér og gem.
+
+**4. Kontroller forbindelsen i appen.**
+
+Tryk **Test** i Nest Hub-indstillingerne. `HTTP 202` betyder kun, at riggen har lagt beskeden i kø; det beviser **ikke**, at Nest Hub viste den. Kontrollér både `Cast display acknowledgement received` i riggens konsol og teksten `KalivHub: forbindelsestest` på Nest Hub.
+
+Send derefter to normale chatbeskeder, og prøv gerne cloud, retry og færdig stemmesamtale. Afbryd Nest Hub, og kontrollér at chatten på telefonen stadig virker upåvirket.
+
+## Sikkerhed og diagnose
+
+- Spejlingen er **slået fra som standard** og kan altid deaktiveres i Android.
+- Android sender kun færdig assistenttekst; **ikke** brugerspørgsmål, chat-historik, ModelRig-bearertoken eller cloud-API-nøgler. Spejl ikke følsomme svar på delt skærm.
+- HMAC-SHA256 autentificerer rå JSON-bytes og Unix-timestamp; der er begrænset tidsvindue, replay-cache, beskedstørrelse (2.000 UTF-16-enheder), op til 16 køede events og begrænset antal HTTP-forbindelser.
+- Trafikken er **HTTP og ukrypteret** på lokalnettet. Signaturen beskytter ikke svarindhold mod aflæsning på netværket. Brug kun betroet LAN, ellers en korrekt HTTPS/VPN-løsning.
+- `GET /healthz` kontrollerer kun, at HTTP-modtageren kører, **ikke** Cast-status.
+- `401`: HMAC eller ur passer ikke. `409`: event-ID er allerede modtaget. `503`: køen eller replay-cache er fuld. `408`: langsom/uafsluttet HTTP-body.
+- Hvis DPAPI-nøglen ikke kan dekrypteres, fejler starteren bevidst frem for stille at generere en ny. Re-pair Android efter en bevidst nøglerotation.
+- Lokal Python-kontrakttest: `py -m unittest discover -s tests -p test_kalivhub_mirror_server.py -v`.
+- Ingen merge eller produktion før komplet CI og fysisk test gennem **Android → rig → Cast → Nest Hub**.
+
+Den ældre `tools/modelrig_cast_bridge.py` er fortsat til frivillig PowerShell-diagnostik og er ikke en del af den automatiske Android-spejling.
