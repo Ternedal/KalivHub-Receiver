@@ -400,6 +400,21 @@ class ProtocolTests(unittest.TestCase):
         ])
         self.assertEqual(disconnected, [True])
 
+    def test_near_expiry_reply_reserves_ack_window_before_show(self):
+        sender = CastSender("192.168.1.13", "E975D483")
+        sent = []
+        disconnected = []
+        sender.send = lambda payload: sent.append(payload["type"])
+        sender.disconnect = lambda: disconnected.append(True)
+        # Still 5 seconds left after THINKING, but SHOW_MESSAGE is allowed
+        # to wait 6 seconds for ACK and could appear after its deadline.
+        with patch("kalivhub_mirror_server.time.monotonic",
+                   side_effect=[1000, 1025]):
+            with self.assertRaisesRegex(ExpiredReply, "too close to expiry"):
+                sender.show_answer("Sent svar", expires_at=1030)
+        self.assertEqual(sent, ["SET_STATE"])
+        self.assertEqual(disconnected, [True])
+
     def test_cast_connection_cannot_retry_after_deadline(self):
         sender = CastSender("192.168.1.13", "E975D483")
         sent = []
