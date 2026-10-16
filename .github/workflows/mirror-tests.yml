@@ -52,3 +52,29 @@ jobs:
             exit 1
           }
           Write-Host "PASS: Windows launcher PowerShell syntax"
+      - name: Verify real DPAPI encryption and stable reuse (no receiver)
+        shell: pwsh
+        run: |
+          # Isolated temporary Windows profile directory, never developer secrets.
+          $env:LOCALAPPDATA = Join-Path $env:RUNNER_TEMP 'kalivhub-mirror-dpapi-fixture'
+          & ./tools/start-kalivhub-mirror.ps1 -VerifyKeyOnly
+          if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) {
+            throw 'DPAPI initialization failed'
+          }
+          $keyPath = Join-Path $env:LOCALAPPDATA 'KalivHub/mirror-secret.dpapi'
+          if (-not (Test-Path -LiteralPath $keyPath -PathType Leaf)) {
+            throw 'Missing encrypted key file'
+          }
+          $first = (Get-FileHash -LiteralPath $keyPath -Algorithm SHA256).Hash
+          $ciphertext = [IO.File]::ReadAllBytes($keyPath)
+          if ($ciphertext.Length -lt 64 -or
+              [Text.Encoding]::UTF8.GetString($ciphertext) -match '^[0-9a-f]{64}) {
+            throw 'Key was not written as DPAPI ciphertext'
+          }
+          & ./tools/start-kalivhub-mirror.ps1 -VerifyKeyOnly
+          $second = (Get-FileHash -LiteralPath $keyPath -Algorithm SHA256).Hash
+          if ($first -ne $second) {
+            throw 'Key unexpectedly rotated on second launch'
+          }
+          Write-Host 'PASS: DPAPI key generated, encrypted, decrypted and preserved across launches.'
+          Remove-Item -LiteralPath $env:LOCALAPPDATA -Recurse -Force
