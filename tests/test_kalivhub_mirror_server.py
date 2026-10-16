@@ -15,7 +15,8 @@ from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 from kalivhub_mirror_server import (
-    BoundedHttpServer, CastSender, MAX_BODY, MAX_CONNECTIONS, MAX_DISPLAY_UNITS, MirrorProtocol,
+    BoundedHttpServer, CastSender, ExpiredReply, MAX_BODY, MAX_CONNECTIONS, MAX_DISPLAY_UNITS,
+    MAX_PENDING_SECONDS, MirrorProtocol, PendingReply, deliver_pending,
     auto_lan_bind, build_handler,
     private_lan_ipv4, utf16_units,
 )
@@ -45,7 +46,7 @@ class ProtocolTests(unittest.TestCase):
     def test_hmac_accepts_once(self):
         body, ts, sig = signed_payload()
         self.assertEqual(self.proto.accept(body, ts, sig), (202, "accepted"))
-        self.assertEqual(self.queue.get_nowait(), "Hej fra Kaliv")
+        self.assertEqual(self.queue.get_nowait().text, "Hej fra Kaliv")
         self.assertEqual(self.proto.accept(body, ts, sig), (409, "duplicate"))
 
     def test_android_kotlin_hmac_interoperability_vector(self):
@@ -118,7 +119,7 @@ class ProtocolTests(unittest.TestCase):
             SECRET.encode(), ts.encode("ascii") + b"\n" + raw, hashlib.sha256
         ).hexdigest()
         self.assertEqual(self.proto.accept(raw, ts, sig), (202, "accepted"))
-        self.assertEqual(self.queue.get_nowait(), "😀" * 1000)
+        self.assertEqual(self.queue.get_nowait().text, "😀" * 1000)
 
     def test_body_over_global_limit_is_refused(self):
         self.assertEqual(
@@ -209,6 +210,48 @@ class ProtocolTests(unittest.TestCase):
             self.assertEqual(remaining[-1], 999)
             sender.disconnect()
 
+    def test_expired_pending_reply_is_never_displayed(self):
+        sender = CastSender("192.168.1.13", "E975D483")
+        sent = []
+        sender.send = lambda payload: sent.append(payload)
+        expired = PendingReply("For gammelt svar", queued_at=1000)
+        self.assertFalse(deliver_pending(sender, expired, now=1031))
+        self.assertEqual(sent, [])
+
+    def test_live_pending_reply_gets_a_cast_expiry_deadline(self):
+        sender = CastSender("192.168.1.13", "E975D483")
+        calls = []
+        sender.show_answer = lambda text, expires_at=None: calls.append((text, expires_at))
+        fresh = PendingReply("Ny besked", queued_at=1000)
+        self.assertTrue(deliver_pending(sender, fresh, now=1001))
+        self.assertEqual(calls, [("Ny besked", 1000 + MAX_PENDING_SECONDS)])
+
+    def test_cast_connection_cannot_show_expired_message_after_slow_start(self):
+        sender = CastSender("192.168.1.13", "E975D483")
+        sent = []
+        sender.send = lambda payload: sent.append(payload)
+        sender.disconnect = lambda: None
+        with patch("kalivhub_mirror_server.time.monotonic",
+                   side_effect=[1000, 1031]):
+            with self.assertRaises(ExpiredReply):
+                sender.show_answer("For sent", expires_at=1030)
+        self.assertEqual(sent, [{"type": "SET_STATE", "state": "thinking"}])
+
+    def test_cast_connection_cannot_retry_after_deadline(self):
+        sender = CastSender("192.168.1.13", "E975D483")
+        sent = []
+        sender.send = lambda payload: (
+            sent.append(payload),
+            (_ for _ in ()).throw(OSError("offline"))
+        )
+        sender.disconnect = lambda: None
+        with patch("kalivhub_mirror_server.time.sleep", return_value=None), (
+            patch("kalivhub_mirror_server.time.monotonic", side_effect=[1000, 1031])
+        ):
+            with self.assertRaises(ExpiredReply):
+                sender.show_answer("For sent", expires_at=1030)
+        self.assertEqual(len(sent), 1)
+
     def test_cast_sender_orders_display_without_model_call(self):
         recorded = []
         sender = CastSender("192.168.1.13", "E975D483")
@@ -297,7 +340,7 @@ class HttpTests(unittest.TestCase):
         }
         code, _ = self.request("POST", "/v1/events", body, headers)
         self.assertEqual(code, 202)
-        self.assertEqual(self.events.get_nowait(), "Hej!")
+        self.assertEqual(self.events.get_nowait().text, "Hej!")
         code, _ = self.request("POST", "/v1/events", body, headers)
         self.assertEqual(code, 409)
 
@@ -331,7 +374,7 @@ class HttpTests(unittest.TestCase):
         sender = CastSender("192.168.1.13", "E975D483")
         forwarded = []
         sender.send = lambda payload: forwarded.append(payload)
-        sender.show_answer(self.events.get_nowait())
+        self.assertTrue(deliver_pending(sender, self.events.get_nowait()))
         self.assertEqual(forwarded, [
             {"type": "SET_STATE", "state": "thinking"},
             {"type": "SHOW_MESSAGE", "text": "Svar fra telefonen"},
