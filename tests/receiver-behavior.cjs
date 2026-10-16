@@ -17,7 +17,7 @@ function harness(){
  return {get,receive,snapshot,sent,setNow:v=>{now=v},failDelivery:v=>{deliveryFailure=v},deferFailure:v=>{deferredFailure=v},rejectDelayed:()=>delayedReject?.(new Error('offline')),tick:()=>scheduledTick?.()};
 }
 {
- const h=harness();h.receive({type:'control_capabilities',version:1,enabled:true});assert.equal(h.get('devices').querySelector('small').textContent,'Kun visning','capabilities alone cannot enable controls');
+ const h=harness();h.receive({type:'control_capabilities',version:1,enabled:true});assert.equal(h.get('devices').querySelector('small').textContent,'','capabilities without snapshot cannot change default UI');
  h.snapshot(1);h.receive({type:'control_capabilities',version:1,enabled:true});assert.equal(h.get('tiles').children[0].getAttribute('role'),'button');
  h.get('tiles').children[0].click();assert.equal(h.sent.length,1);assert.equal(h.sent[0].data.action,'turn_on');
  h.get('tiles').children[0].click();assert.equal(h.sent.length,1,'repeated tap suppressed');
@@ -75,7 +75,7 @@ function harness(){
 }
 {
  const h=harness();h.snapshot(1);
- h.receive({type:'snapshot',version:1,session_id:'session1234',sequence:2,entities:[{entity_id:'light.kitchen',name:'Bad\\u0085Name',state:'on'}]});
+ h.receive({type:'snapshot',version:1,session_id:'session1234',sequence:2,entities:[{entity_id:'light.kitchen',name:'Bad\u0085Name',state:'on'}]});
  assert.equal(h.get('tiles').children[0].children[1].textContent,'off','C1 control character rejected');
  h.snapshot(2,'session1234','on');
  assert.equal(h.get('tiles').children[0].children[1].textContent,'on','rejected text does not advance sequence');

@@ -1,0 +1,154 @@
+name: KalivHub mirror offline tests
+on:
+  pull_request:
+    paths:
+      - tools/kalivhub_mirror_server.py
+      - tools/start-kalivhub-mirror.ps1
+      - tools/test-kalivhub-readiness.ps1
+      - tools/set-kalivhub-firewall.ps1
+      - tests/test_kalivhub_mirror_server.py
+      - tests/test_kalivhub_firewall.ps1
+      - tests/test_kalivhub_bind.ps1
+      - .github/workflows/mirror-tests.yml
+  push:
+    branches: [test/nest-hub-microphone-probe]
+    paths:
+      - tools/kalivhub_mirror_server.py
+      - tools/start-kalivhub-mirror.ps1
+      - tools/test-kalivhub-readiness.ps1
+      - tools/set-kalivhub-firewall.ps1
+      - tests/test_kalivhub_mirror_server.py
+      - tests/test_kalivhub_firewall.ps1
+      - tests/test_kalivhub_bind.ps1
+      - .github/workflows/mirror-tests.yml
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  mirror-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Validate syntax
+        run: python -m py_compile tools/kalivhub_mirror_server.py
+      - name: Validate PyChromecast sender API against installable version
+        run: |
+          python -m pip install 'pychromecast>=13,<15'
+          python - <<'PY'
+          import inspect
+          import pychromecast
+          from pychromecast.controllers import BaseController
+          assert callable(pychromecast.get_chromecast_from_host)
+          assert callable(pychromecast.Chromecast.start_app)
+          from pychromecast.socket_client import SocketClient
+          # PyChromecast 14 uses socket_client.register_handler; later
+          # versions may forward it on Chromecast.
+          assert (callable(getattr(pychromecast.Chromecast, "register_handler", None))
+                  or callable(SocketClient.register_handler))
+          assert callable(pychromecast.Chromecast.disconnect)
+          assert callable(BaseController.send_message)
+          assert "supporting_app_id" in inspect.signature(BaseController.__init__).parameters
+          print("PASS: KalivHub Cast sender APIs available in installed PyChromecast")
+          PY
+      - name: Run offline security and HTTP contract tests
+        run: python -m unittest discover -s tests -p test_kalivhub_mirror_server.py -v
+
+  windows-launcher-syntax:
+    runs-on: windows-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Run HTTP and security tests against native Windows sockets
+        shell: pwsh
+        run: |
+          python -m py_compile tools/kalivhub_mirror_server.py
+          python -m unittest discover -s tests -p test_kalivhub_mirror_server.py -v
+      - name: Validate DPAPI PowerShell launcher parses safely
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $parseErrors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path tools/start-kalivhub-mirror.ps1),
+            [ref]$tokens,
+            [ref]$parseErrors
+          ) | Out-Null
+          if ($parseErrors.Count -gt 0) {
+            $parseErrors | Format-List | Out-String | Write-Error
+            exit 1
+          }
+          Write-Host "PASS: Windows launcher PowerShell syntax"
+      - name: Run static read-only Windows acceptance preflight
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $parseErrors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path tools/test-kalivhub-readiness.ps1),
+            [ref]$tokens, [ref]$parseErrors
+          ) | Out-Null
+          if ($parseErrors.Count -ne 0) { throw 'Invalid readiness preflight PowerShell syntax' }
+          ./tools/test-kalivhub-readiness.ps1 -StaticOnly
+      - name: Verify phone-only firewall safety without changing Windows firewall
+        shell: pwsh
+        run: ./tests/test_kalivhub_firewall.ps1
+      - name: Verify optional private or Tailscale bind without opening sockets
+        shell: pwsh
+        run: ./tests/test_kalivhub_bind.ps1
+      - name: Verify real DPAPI encryption and stable reuse (no receiver)
+        shell: pwsh
+        run: |
+          # Isolated temporary Windows profile directory, never developer secrets.
+          $env:LOCALAPPDATA = Join-Path $env:RUNNER_TEMP 'kalivhub-mirror-dpapi-fixture'
+          & ./tools/start-kalivhub-mirror.ps1 -VerifyKeyOnly
+          if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) {
+            throw 'DPAPI initialization failed'
+          }
+          $keyPath = Join-Path $env:LOCALAPPDATA 'KalivHub/mirror-secret.dpapi'
+          if (-not (Test-Path -LiteralPath $keyPath -PathType Leaf)) {
+            throw 'Missing encrypted key file'
+          }
+          $first = (Get-FileHash -LiteralPath $keyPath -Algorithm SHA256).Hash
+          $ciphertext = [IO.File]::ReadAllBytes($keyPath)
+          if ($ciphertext.Length -lt 64) {
+            throw 'Key was not written as DPAPI ciphertext'
+          }
+          & ./tools/start-kalivhub-mirror.ps1 -VerifyKeyOnly
+          $second = (Get-FileHash -LiteralPath $keyPath -Algorithm SHA256).Hash
+          if ($first -ne $second) {
+            throw 'Key unexpectedly rotated on second launch'
+          }
+          Write-Host 'PASS: DPAPI key generated, encrypted, decrypted and preserved across launches.'
+          # Corrupted DPAPI data must fail CLOSED, never silently rotate and
+          # leave the already-paired Android client trusting a different key.
+          $corrupted = [byte[]](1..32)
+          [IO.File]::WriteAllBytes($keyPath, $corrupted)
+          $corruptHash = (Get-FileHash -LiteralPath $keyPath -Algorithm SHA256).Hash
+          $rejected = $false
+          try {
+            & ./tools/start-kalivhub-mirror.ps1 -VerifyKeyOnly
+          } catch {
+            if ($_.Exception.Message -notmatch 'Cannot decrypt KalivHub mirror key') {
+              throw
+            }
+            $rejected = $true
+          }
+          if (-not $rejected -or
+              (Get-FileHash -LiteralPath $keyPath -Algorithm SHA256).Hash -ne $corruptHash) {
+            throw 'Corrupt key was accepted or silently replaced'
+          }
+          Write-Host 'PASS: corrupted DPAPI key refused without silent rotation.'
+          Remove-Item -LiteralPath $env:LOCALAPPDATA -Recurse -Force
