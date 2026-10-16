@@ -3,12 +3,14 @@ on:
   pull_request:
     paths:
       - tools/kalivhub_mirror_server.py
+      - tools/start-kalivhub-mirror.ps1
       - tests/test_kalivhub_mirror_server.py
       - .github/workflows/mirror-tests.yml
   push:
     branches: [test/nest-hub-microphone-probe]
     paths:
       - tools/kalivhub_mirror_server.py
+      - tools/start-kalivhub-mirror.ps1
       - tests/test_kalivhub_mirror_server.py
       - .github/workflows/mirror-tests.yml
   workflow_dispatch:
@@ -29,3 +31,24 @@ jobs:
         run: python -m py_compile tools/kalivhub_mirror_server.py
       - name: Run offline security and HTTP contract tests
         run: python -m unittest discover -s tests -p test_kalivhub_mirror_server.py -v
+
+  windows-launcher-syntax:
+    runs-on: windows-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Validate DPAPI PowerShell launcher parses safely
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $parseErrors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path tools/start-kalivhub-mirror.ps1),
+            [ref]$tokens,
+            [ref]$parseErrors
+          ) | Out-Null
+          if ($parseErrors.Count -gt 0) {
+            $parseErrors | Format-List | Out-String | Write-Error
+            exit 1
+          }
+          Write-Host "PASS: Windows launcher PowerShell syntax"
