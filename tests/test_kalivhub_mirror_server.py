@@ -223,6 +223,31 @@ class ProtocolTests(unittest.TestCase):
             with self.subTest(bad=bad):
                 self.assertFalse(private_lan_ipv4(bad))
 
+    def test_cast_launch_error_is_not_masked_by_failed_disconnect(self):
+        class BaseController:
+            def __init__(self, _namespace, supporting_app_id=None):
+                self.app_id = supporting_app_id
+
+        class BrokenCast:
+            def wait(self, timeout):
+                raise TimeoutError("original Cast connection timeout")
+            def disconnect(self):
+                raise OSError("cleanup socket already closed")
+
+        fake_py = SimpleNamespace(
+            get_chromecast_from_host=lambda _address: BrokenCast(),
+        )
+        fake_controllers = SimpleNamespace(BaseController=BaseController)
+        with patch.dict(sys.modules, {
+            "pychromecast": fake_py,
+            "pychromecast.controllers": fake_controllers,
+        }):
+            sender = CastSender("192.168.1.13", "E975D483")
+            with self.assertRaisesRegex(TimeoutError, "original Cast connection timeout"):
+                sender.connect()
+            self.assertIsNone(sender.cast)
+            self.assertIsNone(sender.controller)
+
     def test_unsolicited_cast_messages_cannot_grow_without_bound(self):
         class BaseController:
             def __init__(self, _namespace, supporting_app_id=None):
