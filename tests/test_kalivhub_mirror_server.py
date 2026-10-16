@@ -322,6 +322,37 @@ class ProtocolTests(unittest.TestCase):
             self.assertIsNone(sender.cast)
             self.assertIsNone(sender.controller)
 
+    def test_pychromecast_14_controller_registration_through_socket_client(self):
+        registered = []
+        class BaseController:
+            def __init__(self, namespace, supporting_app_id=None):
+                self.namespace = namespace
+                self.app_id = supporting_app_id
+        class FakeCast:
+            status = SimpleNamespace(app_id="E975D483")
+            def __init__(self):
+                self.socket_client = SimpleNamespace(
+                    register_handler=lambda controller: registered.append(controller)
+                )
+            def wait(self, timeout):
+                self.timeout = timeout
+            def disconnect(self):
+                pass
+        cast = FakeCast()  # Deliberately has NO cast.register_handler.
+        fake_py = SimpleNamespace(get_chromecast_from_host=lambda _address: cast)
+        fake_controllers = SimpleNamespace(BaseController=BaseController)
+        with patch.dict(sys.modules, {
+            "pychromecast": fake_py,
+            "pychromecast.controllers": fake_controllers,
+        }):
+            sender = CastSender("192.168.1.13", "E975D483")
+            sender.connect()
+            self.assertEqual(len(registered), 1)
+            self.assertIs(sender.controller, registered[0])
+            self.assertEqual(sender.controller.namespace,
+                             "urn:x-cast:com.kalivhub.micprobe")
+            sender.disconnect()
+
     def test_unsolicited_cast_messages_cannot_grow_without_bound(self):
         class BaseController:
             def __init__(self, _namespace, supporting_app_id=None):
