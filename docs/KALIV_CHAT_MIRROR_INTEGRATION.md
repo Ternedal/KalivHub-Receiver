@@ -8,7 +8,7 @@
 
 - [Kaliv Android draft-PR #2206](https://github.com/Ternedal/ModelRig/pull/2206) – branch `feature/kalivhub-android-mirror-optin-20261015`.
 - [KalivHub Receiver draft-PR #3](https://github.com/Ternedal/KalivHub-Receiver/pull/3) – branch `test/nest-hub-microphone-probe`.
-- Android-kompilering, enhedstests, CodeQL, exact-head-kvalificering og separat test-APK: **PASS** på PR-head `e19bca5`.
+- Android-kompilering, enhedstests, CodeQL og exact-head-kvalificering var **PASS** på tidligere head `e19bca5`. Seneste Android-kode har kø- og privatlivsrettelser; verificér grønne checks for den aktuelle head inden fysisk test.
 - Receiver JavaScript, mikrofon-diagnostik og mirror-protokoltests: **PASS** på tidligere head; kontroller seneste workflow-status ved senere ændringer.
 - Ingen merge til `main`; ingen produktions-APK er ændret.
 
@@ -38,7 +38,7 @@ For at stoppe: tryk Ctrl+C i PowerShell. Serveren kører ikke automatisk som en 
 
 **3. Installer isoleret Android-testbuild, når der skal fysisk testes.**
 
-Seneste verificerede test-APK kan hentes i [GitHub Actions-build #38813378802](https://github.com/Ternedal/ModelRig/actions/runs/38813378802). Artefaktet hedder `kalivhub-mirror-android-a425f-test-apk` og indeholder `app-a425f.apk`. GitHub har oplyst udløb **29. oktober 2026**. Appens separate id er `dk.ternedal.modelrig.a425f`: den installeres ved siden af normal Kaliv og skal parres med riggen separat.
+Nyere bygget test-APK kan hentes i [GitHub Actions-build #38858884802](https://github.com/Ternedal/ModelRig/actions/runs/38858884802), commit `53ec6a48`. Artefaktet hedder `kalivhub-mirror-android-a425f-test-apk` og indeholder `app-a425f.apk`. GitHub har oplyst udløb **30. oktober 2026**. Appens separate id er `dk.ternedal.modelrig.a425f`: den installeres ved siden af normal Kaliv og skal parres med riggen separat.
 
 I testappen: åbn chatmenuen → **Nest Hub-spejling**. Indtast `http://X.X.X.X:8765` (riggens faktiske LAN-IP), og indsæt samme spejlingsnøgle fra PowerShell. Aktivér og gem.
 
@@ -46,13 +46,13 @@ I testappen: åbn chatmenuen → **Nest Hub-spejling**. Indtast `http://X.X.X.X:
 
 Tryk **Test** i Nest Hub-indstillingerne. `HTTP 202` betyder kun, at riggen har lagt beskeden i kø; det beviser **ikke**, at Nest Hub viste den. Kontrollér både `Cast display acknowledgement received` i riggens konsol og teksten `KalivHub: forbindelsestest` på Nest Hub.
 
-Send derefter to normale chatbeskeder, og prøv gerne cloud, retry og færdig stemmesamtale. Afbryd Nest Hub, og kontrollér at chatten på telefonen stadig virker upåvirket.
+Send derefter to normale chatbeskeder, og prøv gerne cloud, retry og færdig stemmesamtale. Afbryd Nest Hub, og kontrollér at chatten på telefonen stadig virker upåvirket. Test også at beskeder, der blev køet før **Deaktivér** eller en ændring af spejlingsnøgle, ikke vises senere; en besked, der ligger i kø mere end 30 sekunder, skal droppes. Allerede påbegyndte HTTP-kald kan dog ikke trækkes tilbage efter de er sendt.
 
 ## Sikkerhed og diagnose
 
 - Spejlingen er **slået fra som standard** og kan altid deaktiveres i Android.
 - Android sender kun færdig assistenttekst; **ikke** brugerspørgsmål, chat-historik, ModelRig-bearertoken eller cloud-API-nøgler. Spejl ikke følsomme svar på delt skærm.
-- HMAC-SHA256 autentificerer rå JSON-bytes og Unix-timestamp; der er begrænset tidsvindue, replay-cache, beskedstørrelse (2.000 UTF-16-enheder), op til 16 køede events og begrænset antal HTTP-forbindelser.
+- HMAC-SHA256 autentificerer rå JSON-bytes og Unix-timestamp; der er begrænset tidsvindue, replay-cache, tekstgrænse (2.000 UTF-16-enheder), HTTP-body (16 KiB), op til 16 køede events og begrænset antal HTTP-forbindelser. Androids egne ventende svar er afgrænset og højst 30 sekunder gamle.
 - Trafikken er **HTTP og ukrypteret** på lokalnettet. Signaturen beskytter ikke svarindhold mod aflæsning på netværket. Brug kun betroet LAN, ellers en korrekt HTTPS/VPN-løsning.
 - `GET /healthz` kontrollerer kun, at HTTP-modtageren kører, **ikke** Cast-status.
 - `401`: HMAC eller ur passer ikke. `409`: event-ID er allerede modtaget. `503`: køen eller replay-cache er fuld. `408`: langsom/uafsluttet HTTP-body.
