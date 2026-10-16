@@ -358,6 +358,14 @@ class CastSender:
                 self.send({"type": "SET_STATE", "state": "idle"})
                 return
             except ExpiredReply:
+                # If we already displayed THINKING, try to reset the receiver
+                # before disconnecting. Otherwise an expired answer can leave
+                # the Hub saying "Kaliv tænker…" indefinitely.
+                if self.cast is not None and self.controller is not None:
+                    try:
+                        self.send({"type": "SET_STATE", "state": "idle"})
+                    except Exception:
+                        pass
                 self.disconnect()
                 raise
             except Exception:
