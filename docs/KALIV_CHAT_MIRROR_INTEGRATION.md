@@ -8,7 +8,7 @@
 
 - [Kaliv Android draft-PR #2206](https://github.com/Ternedal/ModelRig/pull/2206) – branch `feature/kalivhub-android-mirror-optin-20261015`.
 - [KalivHub Receiver draft-PR #3](https://github.com/Ternedal/KalivHub-Receiver/pull/3) – branch `test/nest-hub-microphone-probe`.
-- Android-kompilering, enhedstests, CodeQL og exact-head-kvalificering var **PASS** på tidligere head `e19bca5`. Seneste Android-kode har kø- og privatlivsrettelser; verificér grønne checks for den aktuelle head inden fysisk test.
+- Android-test-APK, Android-kompilering/enhedstests og CodeQL er **PASS** for udviklingskoden; exact-head-merge-kontrollen er fortsat ikke grøn, fordi udviklingsbranchen er bagefter den løbende `main`. Det påvirker ikke brugen af den isolerede test-APK og begrunder, at PR'en fortsat er draft.
 - Receiver JavaScript, mikrofon-diagnostik og mirror-protokoltests: **PASS** på tidligere head; kontroller seneste workflow-status ved senere ændringer.
 - Ingen merge til `main`; ingen produktions-APK er ændret.
 
@@ -38,7 +38,7 @@ For at stoppe: tryk Ctrl+C i PowerShell. Serveren kører ikke automatisk som en 
 
 **3. Installer isoleret Android-testbuild, når der skal fysisk testes.**
 
-Nyere bygget test-APK kan hentes i [GitHub Actions-build #38858884802](https://github.com/Ternedal/ModelRig/actions/runs/38858884802), commit `53ec6a48`. Artefaktet hedder `kalivhub-mirror-android-a425f-test-apk` og indeholder `app-a425f.apk`. GitHub har oplyst udløb **30. oktober 2026**. Appens separate id er `dk.ternedal.modelrig.a425f`: den installeres ved siden af normal Kaliv og skal parres med riggen separat.
+Seneste verificerede, separat installerbare test-APK kan hentes i [GitHub Actions-build #38861729114](https://github.com/Ternedal/ModelRig/actions/runs/38861729114), commit `cc5467a3`. Byggejobbet kontrollerede både korrekt test-pakkenavn og launcher-etiket. Artefaktet hedder `kalivhub-mirror-android-a425f-test-apk` og indeholder `app-a425f.apk`. GitHub har oplyst udløb **30. oktober 2026**. Appens separate id er `dk.ternedal.modelrig.a425f`: den installeres ved siden af normal Kaliv og skal parres med riggen separat. Telefonens test-app hedder **Kaliv TEST · Nest Hub**, så de to apps kan kendes fra hinanden.
 
 I testappen: åbn chatmenuen → **Nest Hub-spejling**. Indtast `http://X.X.X.X:8765` (riggens faktiske LAN-IP), og indsæt samme spejlingsnøgle fra PowerShell. Aktivér og gem.
 
