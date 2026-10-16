@@ -22,7 +22,8 @@ import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 NAMESPACE = "urn:x-cast:com.kalivhub.micprobe"
-MAX_BODY = 8192
+# Allow UTF-16 display text even when Android JSON escapes each unit as \\uXXXX.
+MAX_BODY = 16_384
 MAX_DISPLAY_UNITS = 2000
 SKEW_SECONDS = 60
 MAX_CONNECTIONS = 24
