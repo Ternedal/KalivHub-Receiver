@@ -211,12 +211,26 @@ def build_handler(protocol: MirrorProtocol):
                 or ctype != "application/json"
             ):
                 return self.respond(413, "invalid_request")
+            # A per-recv socket timeout is NOT an absolute deadline: a
+            # malicious slow client could trickle bytes just below the timeout
+            # forever. Bound total body read time independently of pacing.
+            deadline = time.monotonic() + READ_TIMEOUT_SECONDS
+            remaining_bytes = int(length)
+            chunks = []
             try:
-                raw = self.rfile.read(int(length))
+                while remaining_bytes:
+                    remaining_time = deadline - time.monotonic()
+                    if remaining_time <= 0:
+                        return self.respond(408, "request_timeout")
+                    self.connection.settimeout(remaining_time)
+                    chunk = self.rfile.read1(min(remaining_bytes, 4096))
+                    if not chunk:
+                        return self.respond(400, "short_body")
+                    chunks.append(chunk)
+                    remaining_bytes -= len(chunk)
             except (OSError, TimeoutError):
                 return self.respond(408, "request_timeout")
-            if len(raw) != int(length):
-                return self.respond(400, "short_body")
+            raw = b"".join(chunks)
             code, status = protocol.accept(
                 raw,
                 self.headers.get("X-Kaliv-Timestamp", ""),
