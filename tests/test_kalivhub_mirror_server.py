@@ -48,6 +48,25 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(self.queue.get_nowait(), "Hej fra Kaliv")
         self.assertEqual(self.proto.accept(body, ts, sig), (409, "duplicate"))
 
+    def test_android_kotlin_hmac_interoperability_vector(self):
+        # Same vector as HubMirrorClientTest.kt; catches protocol drift.
+        body = (
+            '{"version":1,"type":"assistant_complete",'
+            '"event_id":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa","text":"Hej"}'
+        ).encode()
+        ts = "1700000000"
+        signature = "v1=" + hmac.new(
+            SECRET.encode(), ts.encode() + b"\n" + body, hashlib.sha256
+        ).hexdigest()
+        self.assertEqual(
+            signature,
+            "v1=2bbcd5f9211630bd07c02821477a3f78739305216d244c0d9d18b4ad06a6866e"
+        )
+        self.assertEqual(
+            self.proto.accept(body, ts, signature, now=1700000000),
+            (202, "accepted"),
+        )
+
     def test_invalid_auth_does_not_enqueue(self):
         body, ts, sig = signed_payload()
         self.assertEqual(self.proto.accept(body, ts, "v1=" + "0"*64)[0], 401)
@@ -280,6 +299,25 @@ class HttpTests(unittest.TestCase):
                 self.assertTrue(self.events.empty())
             finally:
                 client.close()
+
+    def test_signed_android_event_reaches_mock_cast_without_model_call(self):
+        body, ts, signature = signed_payload("Svar fra telefonen")
+        code, _ = self.request("POST", "/v1/events", body, {
+            "Content-Type": "application/json",
+            "X-Kaliv-Timestamp": ts,
+            "X-Kaliv-Signature": signature,
+        })
+        self.assertEqual(code, 202)
+        sender = CastSender("192.168.1.13", "E975D483")
+        forwarded = []
+        sender.send = lambda payload: forwarded.append(payload)
+        sender.show_answer(self.events.get_nowait())
+        self.assertEqual(forwarded, [
+            {"type": "SET_STATE", "state": "thinking"},
+            {"type": "SHOW_MESSAGE", "text": "Svar fra telefonen"},
+            {"type": "SET_STATE", "state": "idle"},
+        ])
+        self.assertTrue(self.events.empty())
 
     def test_missing_auth_and_bad_endpoint(self):
         body, _, _ = signed_payload()
