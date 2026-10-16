@@ -137,6 +137,39 @@ class ProtocolTests(unittest.TestCase):
             with self.subTest(bad=bad):
                 self.assertFalse(private_lan_ipv4(bad))
 
+    def test_unsolicited_cast_messages_cannot_grow_without_bound(self):
+        class BaseController:
+            def __init__(self, _namespace, supporting_app_id=None):
+                self.app_id = supporting_app_id
+
+        class FakeCast:
+            status = SimpleNamespace(app_id="E975D483")
+            def wait(self, timeout):
+                self.timeout = timeout
+            def register_handler(self, controller):
+                self.controller = controller
+            def disconnect(self):
+                pass
+
+        cast = FakeCast()
+        fake_py = SimpleNamespace(
+            get_chromecast_from_host=lambda _address: cast,
+        )
+        fake_controllers = SimpleNamespace(BaseController=BaseController)
+        with patch.dict(sys.modules, {
+            "pychromecast": fake_py,
+            "pychromecast.controllers": fake_controllers,
+        }):
+            sender = CastSender("192.168.1.13", "E975D483")
+            sender.connect()
+            for index in range(1000):
+                cast.controller.receive_message(None, {"sequence": index})
+            self.assertEqual(sender.acks.qsize(), 64)
+            remaining = [sender.acks.get_nowait()["sequence"] for _ in range(64)]
+            self.assertEqual(remaining[0], 936)
+            self.assertEqual(remaining[-1], 999)
+            sender.disconnect()
+
     def test_cast_sender_orders_display_without_model_call(self):
         recorded = []
         sender = CastSender("192.168.1.13", "E975D483")
