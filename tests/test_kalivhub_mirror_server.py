@@ -18,7 +18,7 @@ from kalivhub_mirror_server import (
     BoundedHttpServer, CastSender, ExpiredReply, MAX_BODY, MAX_CONNECTIONS, MAX_DISPLAY_UNITS,
     MAX_PENDING_SECONDS, MirrorProtocol, PendingReply, deliver_pending,
     auto_lan_bind, build_handler, display_worker, post_signed_selftest,
-    private_lan_ipv4, utf16_units,
+    private_lan_ipv4, read_signed_body, utf16_units,
 )
 
 SECRET = "s" * 40
@@ -36,6 +36,43 @@ def signed_payload(text="Hej fra Kaliv", ident=None, timestamp=None):
         SECRET.encode(), ts.encode("ascii") + b"\n" + body, hashlib.sha256
     ).hexdigest()
     return body, ts, signature
+
+
+class AbsoluteBodyDeadlineTests(unittest.TestCase):
+    def test_trickling_bytes_expire_on_total_elapsed_time(self):
+        elapsed = iter((100.0, 100.10, 100.40, 100.60))
+        timeouts = []
+        incoming = iter((b"a", b"b", b"c"))
+        reader = SimpleNamespace(read1=lambda _n: next(incoming))
+        connection = SimpleNamespace(settimeout=lambda n: timeouts.append(n))
+        with self.assertRaises(TimeoutError):
+            read_signed_body(reader, connection, 3, 0.5,
+                             clock=lambda: next(elapsed))
+        self.assertEqual(len(timeouts), 2)
+        self.assertGreater(timeouts[0], timeouts[1])
+        self.assertAlmostEqual(timeouts[0], 0.4, places=5)
+        self.assertAlmostEqual(timeouts[1], 0.1, places=5)
+
+    def test_complete_multi_chunk_body_before_deadline(self):
+        elapsed = iter((50.0, 50.1, 50.2))
+        sizes = []
+        incoming = iter((b"he", b"llo"))
+        def read1(size):
+            sizes.append(size)
+            return next(incoming)
+        reader = SimpleNamespace(read1=read1)
+        connection = SimpleNamespace(settimeout=lambda n: None)
+        self.assertEqual(read_signed_body(
+            reader, connection, 5, 1.0, clock=lambda: next(elapsed)),
+            b"hello")
+        self.assertEqual(sizes, [5, 3])
+
+    def test_early_eof_yields_short_body(self):
+        connection = SimpleNamespace(settimeout=lambda _: None)
+        reader = SimpleNamespace(read1=lambda _size: b"")
+        with self.assertRaises(EOFError):
+            read_signed_body(reader, connection, 5, 1.0,
+                             clock=lambda: 0.0)
 
 
 class ProtocolTests(unittest.TestCase):
