@@ -19,6 +19,7 @@ import socket
 import threading
 import time
 import uuid
+from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 NAMESPACE = "urn:x-cast:com.kalivhub.micprobe"
@@ -28,6 +29,7 @@ MAX_DISPLAY_UNITS = 2000
 SKEW_SECONDS = 60
 MAX_CONNECTIONS = 24
 READ_TIMEOUT_SECONDS = 5
+MAX_PENDING_SECONDS = 30
 SUPPORTED_KEYS = frozenset(("version", "type", "event_id", "text"))
 
 
@@ -58,6 +60,26 @@ def auto_lan_bind(cast_host: str) -> str:
 
 def utf16_units(value: str) -> int:
     return len(value.encode("utf-16-le")) // 2
+
+
+@dataclass(frozen=True)
+class PendingReply:
+    text: str
+    queued_at: float
+
+
+class ExpiredReply(Exception):
+    """Message is too old to display, even after a Cast reconnection."""
+
+
+def deliver_pending(sender, item: PendingReply, now: float | None = None) -> bool:
+    """Return False for expired replies without sending anything to Cast."""
+    deadline = item.queued_at + MAX_PENDING_SECONDS
+    current = time.monotonic() if now is None else now
+    if current >= deadline:
+        return False
+    sender.show_answer(item.text, expires_at=deadline)
+    return True
 
 
 class MirrorProtocol:
@@ -120,7 +142,7 @@ class MirrorProtocol:
             if len(self.seen) >= self.max_seen:
                 return 503, "busy"
             try:
-                self.events.put_nowait(text)
+                self.events.put_nowait(PendingReply(text, time.monotonic()))
             except queue.Full:
                 return 503, "busy"
             self.seen[event_id] = current + 2 * SKEW_SECONDS
@@ -295,13 +317,22 @@ class CastSender:
                 return
         raise TimeoutError("Cast acknowledgement missing")
 
-    def show_answer(self, text: str):
+    def show_answer(self, text: str, expires_at: float | None = None):
         for attempt in range(2):
+            if expires_at is not None and time.monotonic() >= expires_at:
+                raise ExpiredReply("Display event expired before Cast connection")
             try:
                 self.send({"type": "SET_STATE", "state": "thinking"})
+                # Connecting a sleeping Nest Hub may be slower than the TTL.
+                # Never display old replies after a stalled Cast launch.
+                if expires_at is not None and time.monotonic() >= expires_at:
+                    raise ExpiredReply("Display event expired while connecting to Cast")
                 self.send({"type": "SHOW_MESSAGE", "text": text})
                 self.send({"type": "SET_STATE", "state": "idle"})
                 return
+            except ExpiredReply:
+                self.disconnect()
+                raise
             except Exception:
                 self.disconnect()
                 if attempt:
@@ -318,8 +349,12 @@ def serve(cast_host: str, app_id: str, bind: str, port: int, secret: str):
         while True:
             answer = pending.get()
             try:
-                sender.show_answer(answer)
-                print("Cast display acknowledgement received", flush=True)
+                if deliver_pending(sender, answer):
+                    print("Cast display acknowledgement received", flush=True)
+                else:
+                    print("Expired Cast display event discarded", flush=True)
+            except ExpiredReply:
+                print("Expired Cast display event discarded", flush=True)
             except Exception as exc:
                 # Chat itself is not affected by Cast network failures.
                 print("Cast mirror failed:", type(exc).__name__, flush=True)
