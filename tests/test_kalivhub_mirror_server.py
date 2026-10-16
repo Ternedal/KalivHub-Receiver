@@ -237,6 +237,24 @@ class ProtocolTests(unittest.TestCase):
                 sender.show_answer("For sent", expires_at=1030)
         self.assertEqual(sent, [{"type": "SET_STATE", "state": "thinking"}])
 
+    def test_expiration_resets_existing_thinking_display_before_disconnect(self):
+        sender = CastSender("192.168.1.13", "E975D483")
+        sent = []
+        disconnected = []
+        sender.cast = object()  # Simulates an already launched receiver.
+        sender.controller = object()
+        sender.send = lambda payload: sent.append(payload)
+        sender.disconnect = lambda: disconnected.append(True)
+        with patch("kalivhub_mirror_server.time.monotonic",
+                   side_effect=[1000, 1031]):
+            with self.assertRaises(ExpiredReply):
+                sender.show_answer("For sent", expires_at=1030)
+        self.assertEqual(sent, [
+            {"type": "SET_STATE", "state": "thinking"},
+            {"type": "SET_STATE", "state": "idle"},
+        ])
+        self.assertEqual(disconnected, [True])
+
     def test_cast_connection_cannot_retry_after_deadline(self):
         sender = CastSender("192.168.1.13", "E975D483")
         sent = []
