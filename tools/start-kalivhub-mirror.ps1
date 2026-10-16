@@ -5,6 +5,9 @@
 param(
     [string]$CastHost = '192.168.1.13',
     [ValidateRange(1, 65535)][int]$Port = 8765,
+    # Optional explicit rig interface, e.g. its Tailscale IPv4 address.
+    # Omit to keep the existing safe automatic LAN-interface selection.
+    [string]$BindIp = '',
     [switch]$ShowSecret,
     [switch]$SelfTest,
     [switch]$StrictAcks,
@@ -17,6 +20,24 @@ $ErrorActionPreference = 'Stop'
 
 if ($PSVersionTable.PSEdition -eq 'Core' -and -not $IsWindows) {
     throw 'This launcher needs Windows for DPAPI.'
+}
+
+# Fail before DPAPI initialization or opening a network listener. A caller
+# must never use a wildcard/public interface for private assistant replies.
+$bindAddress = $BindIp.Trim()
+if ($bindAddress) {
+    $parsed = $null
+    if (-not [System.Net.IPAddress]::TryParse($bindAddress, [ref]$parsed) -or
+        $parsed.AddressFamily -ne [System.Net.Sockets.AddressFamily]::InterNetwork -or
+        $parsed.ToString() -cne $bindAddress) {
+        throw 'BindIp must be one canonical private IPv4 address; no hostnames, subnet masks or wildcards.'
+    }
+    $octets = $parsed.GetAddressBytes()
+    $safe = ($octets[0] -eq 10) -or
+        ($octets[0] -eq 172 -and $octets[1] -ge 16 -and $octets[1] -le 31) -or
+        ($octets[0] -eq 192 -and $octets[1] -eq 168) -or
+        ($octets[0] -eq 100 -and $octets[1] -ge 64 -and $octets[1] -le 127)
+    if (-not $safe) { throw 'BindIp must be a private LAN or Tailscale IPv4 address.' }
 }
 
 $directory = Join-Path $env:LOCALAPPDATA 'KalivHub'
@@ -88,7 +109,12 @@ if (-not (Test-Path -LiteralPath $serverPath -PathType Leaf)) {
 Write-Host 'Starter KalivHub-spejling:'
 Write-Host '  Nest Hub:' $CastHost
 Write-Host '  Port:' $Port
-Write-Host '  Den lokale LAN-adresse vælges automatisk. Stop med Ctrl+C.'
+if ($bindAddress) {
+    Write-Host '  Bind på den eksplicit valgte, private rig-IP:' $bindAddress
+} else {
+    Write-Host '  Den lokale LAN-adresse vælges automatisk.'
+}
+Write-Host '  Stop med Ctrl+C.'
 Write-Host '  OBS: Brug kun betroet netværk. HTTP krypterer IKKE indholdet.'
 if ($ClearAfterSeconds -gt 0) {
     Write-Host "  Skærmbeskeder nulstilles efter $ClearAfterSeconds sekunder uden nye svar."
@@ -101,7 +127,12 @@ if ($StrictAcks) {
 }
 $env:KALIVHUB_MIRROR_SECRET = $secret
 try {
-    $serverArgs = @($serverPath, '--cast-host', $CastHost, '--auto-bind', '--allow-lan', '--port', $Port)
+    $serverArgs = @($serverPath, '--cast-host', $CastHost, '--port', $Port, '--allow-lan')
+    if ($bindAddress) {
+        $serverArgs += @('--bind', $bindAddress)
+    } else {
+        $serverArgs += '--auto-bind'
+    }
     if ($SelfTest) { $serverArgs += '--startup-test' }
     if ($StrictAcks) { $serverArgs += '--strict-acks' }
     if ($ClearAfterSeconds -gt 0) {
