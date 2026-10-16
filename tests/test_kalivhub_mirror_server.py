@@ -630,6 +630,53 @@ class HttpTests(unittest.TestCase):
         self.assertEqual(json.loads(data)["status"], "unauthorized")
         self.assertTrue(self.events.empty())
 
+    def test_duplicate_security_headers_are_rejected_before_reading_body(self):
+        body, ts, sig = signed_payload("Hej")
+        required = {
+            "Content-Type": "application/json",
+            "Content-Length": str(len(body)),
+            "X-Kaliv-Timestamp": ts,
+            "X-Kaliv-Signature": sig,
+        }
+        for duplicated in required:
+            with self.subTest(header=duplicated):
+                client = http.client.HTTPConnection(
+                    "127.0.0.1", self.server.server_port, timeout=5
+                )
+                try:
+                    client.putrequest("POST", "/v1/events")
+                    for name, value in required.items():
+                        client.putheader(name, value)
+                        if name == duplicated:
+                            client.putheader(name, value)
+                    client.endheaders(body)
+                    response = client.getresponse()
+                    self.assertEqual(response.status, 400)
+                    self.assertEqual(json.loads(response.read())["status"], "invalid_headers")
+                    self.assertTrue(self.events.empty())
+                finally:
+                    client.close()
+
+    def test_transfer_encoding_header_is_rejected_with_content_length(self):
+        body, ts, sig = signed_payload("Hej")
+        client = http.client.HTTPConnection(
+            "127.0.0.1", self.server.server_port, timeout=5
+        )
+        try:
+            client.putrequest("POST", "/v1/events")
+            client.putheader("Content-Type", "application/json")
+            client.putheader("Content-Length", str(len(body)))
+            client.putheader("X-Kaliv-Timestamp", ts)
+            client.putheader("X-Kaliv-Signature", sig)
+            client.putheader("Transfer-Encoding", "chunked")
+            client.endheaders(body)
+            response = client.getresponse()
+            self.assertEqual(response.status, 400)
+            self.assertTrue(self.events.empty())
+            response.read()
+        finally:
+            client.close()
+
     def test_signed_post_and_replay(self):
         body, ts, sig = signed_payload("Hej!")
         headers = {
@@ -653,6 +700,8 @@ class HttpTests(unittest.TestCase):
                 client.putrequest("POST", "/v1/events")
                 client.putheader("Content-Type", "application/json")
                 client.putheader("Content-Length", "100")
+                client.putheader("X-Kaliv-Timestamp", str(int(time.time())))
+                client.putheader("X-Kaliv-Signature", "v1=" + "0" * 64)
                 client.endheaders()
                 client.send(b"x")
                 response = client.getresponse()
@@ -703,7 +752,7 @@ class HttpTests(unittest.TestCase):
     def test_missing_auth_and_bad_endpoint(self):
         body, _, _ = signed_payload()
         self.assertEqual(self.request("POST", "/v1/events", body,
-                         {"Content-Type": "application/json"})[0], 401)
+                         {"Content-Type": "application/json"})[0], 400)
         self.assertEqual(self.request("POST", "/other", body)[0], 404)
 
 
