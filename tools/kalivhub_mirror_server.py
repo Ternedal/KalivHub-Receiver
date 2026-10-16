@@ -476,8 +476,8 @@ def post_signed_selftest(bind: str, port: int, secret: str) -> int:
         return response.status
 
 
-def display_worker(pending: queue.Queue, sender, clear_after_seconds: float = 0,
-                   stop_event: threading.Event | None = None):
+def _display_worker_loop(pending: queue.Queue, sender, clear_after_seconds: float = 0,
+                         stop_event: threading.Event | None = None):
     """One owner for Cast: serialized output and optional no-race auto-clear.
 
     stop_event supports deterministic offline tests; the production daemon
@@ -517,6 +517,19 @@ def display_worker(pending: queue.Queue, sender, clear_after_seconds: float = 0,
             pending.task_done()
 
 
+def display_worker(pending: queue.Queue, sender, clear_after_seconds: float = 0,
+                   stop_event: threading.Event | None = None):
+    """Only the display worker may disconnect its Cast transport.
+
+    Shutting down the HTTP listener from another thread must not concurrently
+    close a socket in the middle of a Cast command.
+    """
+    try:
+        _display_worker_loop(pending, sender, clear_after_seconds, stop_event)
+    finally:
+        sender.disconnect()
+
+
 def serve(cast_host: str, app_id: str, bind: str, port: int, secret: str,
           startup_test: bool = False, clear_after_seconds: int = 0,
           require_correlated_acks: bool = False):
@@ -527,9 +540,13 @@ def serve(cast_host: str, app_id: str, bind: str, port: int, secret: str,
 
     BoundedHttpServer.allow_reuse_address = True
     server = BoundedHttpServer((bind, port), build_handler(protocol))
-    threading.Thread(target=display_worker,
-                     args=(pending, sender, clear_after_seconds),
-                     name="kalivhub-cast", daemon=True).start()
+    worker_stop = threading.Event()
+    worker_thread = threading.Thread(
+        target=display_worker,
+        args=(pending, sender, clear_after_seconds, worker_stop),
+        name="kalivhub-cast", daemon=True,
+    )
+    worker_thread.start()
     print(f"KalivHub mirror listening on {bind}:{port} (Cast {cast_host}); opt-in only", flush=True)
     if startup_test:
         def run_self_test():
@@ -552,7 +569,12 @@ def serve(cast_host: str, app_id: str, bind: str, port: int, secret: str,
         pass
     finally:
         server.server_close()
-        sender.disconnect()
+        worker_stop.set()
+        # Cast belongs solely to the worker. Never disconnect it concurrently
+        # from the HTTP/main thread, even when a Cast request is still pending.
+        worker_thread.join(timeout=8)
+        if worker_thread.is_alive():
+            print("Cast worker still finishing shutdown; process exit will close sockets", flush=True)
 
 
 def main():
