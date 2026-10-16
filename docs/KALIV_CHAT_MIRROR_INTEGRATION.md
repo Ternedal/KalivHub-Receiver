@@ -57,7 +57,18 @@ pwsh -NoProfile -File .\tools\start-kalivhub-mirror.ps1 -ShowSecret -SelfTest -C
 Standardværdien er `0` (ingen automatisk rydning), og funktionen ændrer ikke gamle appsvar, medmindre den vælges aktivt. Rydningen sendes via modtagerens eksisterende `CLEAR_MESSAGE`-kommando, som kræver en separat Cast-kvittering. Funktionen er best effort: Hvis Nest Hub er offline, kan den viste tekst ikke nødvendigvis fjernes, før forbindelsen er tilbage.
 
 
-Starteren finder selv den lokale IP-adresse, som riggen ville bruge til at nå Nest Hub på `192.168.1.13`; IP-valget udsender **ingen** UDP-datapakke. Den åbner kun denne specifikke private IPv4-adresse på TCP-port `8765`. Den opretter **ingen** Windows-firewallregel og ændrer ikke riggens ModelRig-worker, Ollama eller produktionsservices.
+Starteren finder som standard selv den lokale IP-adresse, som riggen ville bruge til at nå Nest Hub på `192.168.1.13`; IP-valget udsender **ingen** UDP-datapakke. Den lytter kun på denne specifikke private IPv4-adresse på TCP-port `8765`. Den opretter **ingen** Windows-firewallregel og ændrer ikke riggens ModelRig-worker, Ollama eller produktionsservices.
+
+**Valgfri forbindelse via Tailscale, uden at ændre standardopsætningen:** Hvis telefonen skal kontakte riggens Tailscale-IP i stedet for dens LAN-IP, skal HTTP-modtageren udtrykkeligt lytte på **riggens egen tildelte Tailscale IPv4-adresse**. Ellers vælger auto-bind kun interfacet mod Nest Hub, typisk `192.168.x.x`. Find riggens aktuelle Tailscale IPv4 (eksempelvis `tailscale ip -4` lokalt på riggen), og angiv den eksplicit:
+
+```powershell
+# Eksemplet 100.101.50.10 SKAL erstattes med riggens egen Tailscale IPv4.
+pwsh -NoProfile -File .\tools\start-kalivhub-mirror.ps1 -BindIp 100.101.50.10 -ShowSecret -SelfTest -ClearAfterSeconds 180
+```
+
+Indtast derefter `http://100.101.50.10:8765` i Android-testappens Nest Hub-spejling. Begge enheder skal være på samme autoriserede Tailnet, og Windows Firewall/Tailscale-ACL'er skal tillade **kun den betroede telefon** at nå TCP `8765`. Hjælpescriptet afviser offentlige adresser, værtsnavne, CIDR og `0.0.0.0`. Hvis IP'en ikke tilhører riggen, kan Python-serveren ikke binde til den og stopper uden at åbne en lytter. Nest Hub kan fortsat være på riggens normale LAN på `192.168.1.13`, uafhængigt af telefonens forbindelse til modtageren. Bemærk, at den valgfrie /32-firewallregel bruger profilen *Private*, mens Tailscale-adapterens Windows-profil kan være anderledes; brug ikke en bred, usikker firewallregel for at omgå dette.
+
+Brug kun `-BindIp`, når en **anden, eksplicit privat IP på riggen** skal modtage spejlingsbeskeder. Uden dette flag fortsætter standardens automatiske LAN-valg uændret.
 
 Se efter loglinjen `KalivHub mirror listening on X.X.X.X:8765`; adressen `X.X.X.X` er **riggens** LAN-adresse. Brug denne adresse i Android, ikke Nest Hubs IP. Hvis Windows Firewall blokerer forbindelsen, kan du **frivilligt** oprette en regel, der kun giver telefonens præcise private IPv4-adresse adgang til TCP `8765`. Starteren ændrer aldrig firewallen af sig selv.
 
