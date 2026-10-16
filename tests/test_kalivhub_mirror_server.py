@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 from kalivhub_mirror_server import (
     BoundedHttpServer, CastSender, ExpiredReply, MAX_BODY, MAX_CONNECTIONS, MAX_DISPLAY_UNITS,
     MAX_PENDING_SECONDS, MirrorProtocol, PendingReply, deliver_pending,
-    auto_lan_bind, build_handler,
+    auto_lan_bind, build_handler, post_signed_selftest,
     private_lan_ipv4, utf16_units,
 )
 
@@ -380,6 +380,25 @@ class HttpTests(unittest.TestCase):
             {"type": "SHOW_MESSAGE", "text": "Svar fra telefonen"},
             {"type": "SET_STATE", "state": "idle"},
         ])
+        self.assertTrue(self.events.empty())
+
+    def test_startup_selftest_crosses_real_signed_http_boundary(self):
+        status = post_signed_selftest(
+            "127.0.0.1", self.server.server_port, SECRET
+        )
+        self.assertEqual(status, 202)
+        reply = self.events.get_nowait()
+        self.assertIsInstance(reply, PendingReply)
+        self.assertEqual(reply.text, "KalivHub: forbindelsestest fra riggen")
+        self.assertLess(time.monotonic() - reply.queued_at, 5)
+
+    def test_startup_selftest_wrong_key_does_not_queue(self):
+        import urllib.error
+        with self.assertRaises(urllib.error.HTTPError) as captured:
+            post_signed_selftest(
+                "127.0.0.1", self.server.server_port, "x" * 40
+            )
+        self.assertEqual(captured.exception.code, 401)
         self.assertTrue(self.events.empty())
 
     def test_missing_auth_and_bad_endpoint(self):
