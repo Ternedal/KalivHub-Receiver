@@ -326,6 +326,24 @@ class ProtocolTests(unittest.TestCase):
         self.assertIsNone(sender.cast)
         self.assertFalse(sender.correlated_acks)
 
+    def test_matching_id_for_unrelated_ack_is_not_receiver_capability(self):
+        sender = CastSender("192.168.1.13", "E975D483")
+        sender.connect = lambda: None
+        def incoming(payload):
+            sender.acks.put({
+                "type": "KALIV_DIAGNOSTICS",
+                "result": "updated",
+                "request_id": payload["request_id"],
+            })
+            sender.acks.put({
+                "type": "KALIV_STATE",
+                "result": "updated",
+                "state": payload["state"],
+            })
+        sender.controller = SimpleNamespace(send_message=incoming)
+        sender.send({"type": "SET_STATE", "state": "thinking"})
+        self.assertFalse(sender.correlated_acks)
+
     def test_unsolicited_mismatched_id_does_not_claim_correlation(self):
         sender = CastSender("192.168.1.13", "E975D483")
         sender.connect = lambda: None
@@ -444,7 +462,8 @@ class ProtocolTests(unittest.TestCase):
 
     def test_unknown_display_command_is_rejected_before_send(self):
         sender = CastSender("192.168.1.13", "E975D483")
-        sender.connect = lambda: None
+        attempts = []
+        sender.connect = lambda: attempts.append("network")
         calls = []
         sender.controller = SimpleNamespace(
             send_message=lambda payload: calls.append(payload)
@@ -452,6 +471,7 @@ class ProtocolTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             sender.send({"type": "DELETE_ALL_MESSAGES"})
         self.assertEqual(calls, [])
+        self.assertEqual(attempts, [])
 
     def test_cast_ack_type_and_display_length_are_checked(self):
         sender = CastSender("192.168.1.13", "E975D483")
