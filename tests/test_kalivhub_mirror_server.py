@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 from kalivhub_mirror_server import (
     BoundedHttpServer, CastSender, ExpiredReply, MAX_BODY, MAX_CONNECTIONS, MAX_DISPLAY_UNITS,
     MAX_PENDING_SECONDS, MirrorProtocol, PendingReply, deliver_pending,
-    auto_lan_bind, build_handler, post_signed_selftest,
+    auto_lan_bind, build_handler, display_worker, post_signed_selftest,
     private_lan_ipv4, utf16_units,
 )
 
@@ -342,6 +342,80 @@ class ProtocolTests(unittest.TestCase):
             sender.acks.put({"type": "KALIV_DISPLAY", "length": 4, "result": "shown"})
         sender.controller = SimpleNamespace(send_message=incoming)
         sender.send({"type": "SHOW_MESSAGE", "text": "Hej!"})
+
+
+class DisplayWorkerTests(unittest.TestCase):
+    """Run the real worker with an injected clock-friendly stop signal."""
+
+    def test_optional_auto_clear_is_in_order_and_never_races_new_answer(self):
+        events = queue.Queue(maxsize=16)
+        stopped = threading.Event()
+        cleared = threading.Event()
+        shown = []
+        clear_calls = []
+
+        class FakeCast:
+            def show_answer(self, text, expires_at=None):
+                shown.append(text)
+            def clear_message(self):
+                clear_calls.append(tuple(shown))
+                cleared.set()
+            def disconnect(self):
+                pass
+
+        worker = threading.Thread(
+            target=display_worker,
+            args=(events, FakeCast(), 0.075),
+            kwargs={"stop_event": stopped},
+            daemon=True,
+        )
+        worker.start()
+        try:
+            events.put(PendingReply("første", time.monotonic()))
+            deadline = time.monotonic() + 2
+            while len(shown) < 1 and time.monotonic() < deadline:
+                time.sleep(0.005)
+            self.assertEqual(shown, ["første"])
+            events.put(PendingReply("anden", time.monotonic()))
+            self.assertTrue(cleared.wait(2), "Cast clear deadline was not reached")
+            self.assertEqual(shown, ["første", "anden"])
+            self.assertEqual(clear_calls, [("første", "anden")])
+        finally:
+            stopped.set()
+            worker.join(2)
+        self.assertFalse(worker.is_alive())
+
+    def test_auto_clear_disabled_never_sends_clear(self):
+        events = queue.Queue(maxsize=16)
+        stopped = threading.Event()
+        shown = []
+        clear_calls = []
+        class FakeCast:
+            def show_answer(self, text, expires_at=None):
+                shown.append(text)
+            def clear_message(self):
+                clear_calls.append(True)
+            def disconnect(self):
+                pass
+        worker = threading.Thread(
+            target=display_worker,
+            args=(events, FakeCast(), 0),
+            kwargs={"stop_event": stopped},
+            daemon=True,
+        )
+        worker.start()
+        try:
+            events.put(PendingReply("bliver stående", time.monotonic()))
+            deadline = time.monotonic() + 2
+            while not shown and time.monotonic() < deadline:
+                time.sleep(0.005)
+            self.assertEqual(shown, ["bliver stående"])
+            time.sleep(0.12)
+            self.assertEqual(clear_calls, [])
+        finally:
+            stopped.set()
+            worker.join(2)
+        self.assertFalse(worker.is_alive())
 
 
 class HttpTests(unittest.TestCase):
