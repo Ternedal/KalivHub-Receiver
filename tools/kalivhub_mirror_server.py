@@ -343,7 +343,9 @@ class CastSender:
             # Unsolicited diagnostics and stale messages may carry an ID.
             # Enable strict correlation only when the receiver proves it
             # can echo our *current* command. Do not trust arbitrary IDs.
-            if ack_id == request_id:
+            if (ack_id == request_id
+                    and ack.get("type") == expected_type
+                    and ack.get("result") == expected_result and matching(ack)):
                 self.correlated_acks = True
             if self.correlated_acks and ack_id != request_id:
                 continue
