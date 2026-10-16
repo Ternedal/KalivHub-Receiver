@@ -626,6 +626,41 @@ class ProtocolTests(unittest.TestCase):
 class DisplayWorkerTests(unittest.TestCase):
     """Run the real worker with an injected clock-friendly stop signal."""
 
+    def test_shutdown_disconnects_cast_on_worker_thread_not_main_thread(self):
+        events = queue.Queue(maxsize=1)
+        stop = threading.Event()
+        entered = threading.Event()
+        release = threading.Event()
+        disconnected = []
+
+        class FakeCast:
+            def show_answer(self, text, expires_at=None):
+                entered.set()
+                if not release.wait(2):
+                    raise TimeoutError("test Cast sender blocked")
+            def disconnect(self):
+                disconnected.append(threading.get_ident())
+
+        thread = threading.Thread(
+            name="test-single-cast-owner", target=display_worker,
+            args=(events, FakeCast(), 0, stop), daemon=True,
+        )
+        thread.start()
+        try:
+            events.put(PendingReply("Svar", time.monotonic()))
+            self.assertTrue(entered.wait(2))
+            stop.set()
+            # Shutdown is requested, but an in-flight display owns the socket.
+            self.assertEqual(disconnected, [])
+        finally:
+            release.set()
+            stop.set()
+            thread.join(timeout=2)
+        self.assertFalse(thread.is_alive())
+        self.assertEqual(disconnected, [thread.ident])
+        self.assertNotEqual(disconnected[0], threading.get_ident())
+
+
     def test_optional_auto_clear_is_in_order_and_never_races_new_answer(self):
         events = queue.Queue(maxsize=16)
         stopped = threading.Event()
