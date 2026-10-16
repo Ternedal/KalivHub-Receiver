@@ -7,6 +7,7 @@ param(
     [ValidateRange(1, 65535)][int]$Port = 8765,
     [switch]$ShowSecret,
     [switch]$SelfTest,
+    [ValidateRange(0, 3600)][int]$ClearAfterSeconds = 0,
     [switch]$VerifyKeyOnly
 )
 
@@ -88,6 +89,9 @@ Write-Host '  Nest Hub:' $CastHost
 Write-Host '  Port:' $Port
 Write-Host '  Den lokale LAN-adresse vælges automatisk. Stop med Ctrl+C.'
 Write-Host '  OBS: Brug kun betroet netværk. HTTP krypterer IKKE indholdet.'
+if ($ClearAfterSeconds -gt 0) {
+    Write-Host "  Skærmbeskeder nulstilles efter $ClearAfterSeconds sekunder uden nye svar."
+}
 if ($SelfTest) {
     Write-Host '  Én signeret testbesked sendes gennem riggens HTTP-server til Nest Hub.'
 }
@@ -95,6 +99,9 @@ $env:KALIVHUB_MIRROR_SECRET = $secret
 try {
     $serverArgs = @($serverPath, '--cast-host', $CastHost, '--auto-bind', '--allow-lan', '--port', $Port)
     if ($SelfTest) { $serverArgs += '--startup-test' }
+    if ($ClearAfterSeconds -gt 0) {
+        $serverArgs += @('--clear-after', "$ClearAfterSeconds")
+    }
     & py @serverArgs
     if ($LASTEXITCODE -ne 0) {
         throw "KalivHub mirror server failed with exit code $LASTEXITCODE"
