@@ -15,7 +15,7 @@ from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 from kalivhub_mirror_server import (
-    BoundedHttpServer, CastSender, MAX_CONNECTIONS, MAX_DISPLAY_UNITS, MirrorProtocol,
+    BoundedHttpServer, CastSender, MAX_BODY, MAX_CONNECTIONS, MAX_DISPLAY_UNITS, MirrorProtocol,
     auto_lan_bind, build_handler,
     private_lan_ipv4, utf16_units,
 )
@@ -105,6 +105,26 @@ class ProtocolTests(unittest.TestCase):
         second, ts2, sig2 = signed_payload(text="second")
         self.assertEqual(self.proto.accept(second, ts2, sig2)[0], 503)
         self.assertEqual(self.proto.accept(first, ts, sig)[0], 409)
+
+    def test_maximum_emoji_reply_fits_even_when_json_escapes_surrogates(self):
+        raw = json.dumps({
+            "version": 1, "type": "assistant_complete",
+            "event_id": str(uuid.uuid4()), "text": "😀" * 1000,
+        }, ensure_ascii=True, separators=(",", ":")).encode("utf-8")
+        self.assertGreater(len(raw), 8192)
+        self.assertLess(len(raw), MAX_BODY)
+        ts = str(int(time.time()))
+        sig = "v1=" + hmac.new(
+            SECRET.encode(), ts.encode("ascii") + b"\n" + raw, hashlib.sha256
+        ).hexdigest()
+        self.assertEqual(self.proto.accept(raw, ts, sig), (202, "accepted"))
+        self.assertEqual(self.queue.get_nowait(), "😀" * 1000)
+
+    def test_body_over_global_limit_is_refused(self):
+        self.assertEqual(
+            self.proto.accept(b"x" * (MAX_BODY + 1), "1700000000", "bad", now=1700000000),
+            (413, "invalid_size"),
+        )
 
     def test_queue_overflow_is_not_marked_replay(self):
         body, ts, sig = signed_payload(text="first")
