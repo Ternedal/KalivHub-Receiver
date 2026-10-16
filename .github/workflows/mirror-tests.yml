@@ -46,7 +46,11 @@ jobs:
           from pychromecast.controllers import BaseController
           assert callable(pychromecast.get_chromecast_from_host)
           assert callable(pychromecast.Chromecast.start_app)
-          assert callable(pychromecast.Chromecast.register_handler)
+          from pychromecast.socket_client import SocketClient
+          # PyChromecast 14 uses socket_client.register_handler; later
+          # versions may forward it on Chromecast.
+          assert (callable(getattr(pychromecast.Chromecast, "register_handler", None))
+                  or callable(SocketClient.register_handler))
           assert callable(pychromecast.Chromecast.disconnect)
           assert callable(BaseController.send_message)
           assert "supporting_app_id" in inspect.signature(BaseController.__init__).parameters
