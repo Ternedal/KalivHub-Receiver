@@ -4,14 +4,18 @@ on:
     paths:
       - tools/kalivhub_mirror_server.py
       - tools/start-kalivhub-mirror.ps1
+      - tools/set-kalivhub-firewall.ps1
       - tests/test_kalivhub_mirror_server.py
+      - tests/test_kalivhub_firewall.ps1
       - .github/workflows/mirror-tests.yml
   push:
     branches: [test/nest-hub-microphone-probe]
     paths:
       - tools/kalivhub_mirror_server.py
       - tools/start-kalivhub-mirror.ps1
+      - tools/set-kalivhub-firewall.ps1
       - tests/test_kalivhub_mirror_server.py
+      - tests/test_kalivhub_firewall.ps1
       - .github/workflows/mirror-tests.yml
   workflow_dispatch:
 
@@ -79,6 +83,9 @@ jobs:
             exit 1
           }
           Write-Host "PASS: Windows launcher PowerShell syntax"
+      - name: Verify phone-only firewall safety without changing Windows firewall
+        shell: pwsh
+        run: ./tests/test_kalivhub_firewall.ps1
       - name: Verify real DPAPI encryption and stable reuse (no receiver)
         shell: pwsh
         run: |
