@@ -76,4 +76,23 @@ jobs:
             throw 'Key unexpectedly rotated on second launch'
           }
           Write-Host 'PASS: DPAPI key generated, encrypted, decrypted and preserved across launches.'
+          # Corrupted DPAPI data must fail CLOSED, never silently rotate and
+          # leave the already-paired Android client trusting a different key.
+          $corrupted = [byte[]](1..32)
+          [IO.File]::WriteAllBytes($keyPath, $corrupted)
+          $corruptHash = (Get-FileHash -LiteralPath $keyPath -Algorithm SHA256).Hash
+          $rejected = $false
+          try {
+            & ./tools/start-kalivhub-mirror.ps1 -VerifyKeyOnly
+          } catch {
+            if ($_.Exception.Message -notmatch 'Cannot decrypt KalivHub mirror key') {
+              throw
+            }
+            $rejected = $true
+          }
+          if (-not $rejected -or
+              (Get-FileHash -LiteralPath $keyPath -Algorithm SHA256).Hash -ne $corruptHash) {
+            throw 'Corrupt key was accepted or silently replaced'
+          }
+          Write-Host 'PASS: corrupted DPAPI key refused without silent rotation.'
           Remove-Item -LiteralPath $env:LOCALAPPDATA -Recurse -Force
