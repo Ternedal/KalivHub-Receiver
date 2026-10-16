@@ -8,6 +8,8 @@ function element(id='',tagName='DIV'){
 }
 function harness(){
  const ids=new Map();const get=id=>{if(!ids.has(id))ids.set(id,element(id));return ids.get(id)};
+ // The fake DOM does not parse static HTML: seed its initial button label.
+ get('devices').querySelector('small').textContent='Kun visning';
  const listeners={};const sent=[];let now=100000;let scheduledTick=null;let deliveryFailure=false;let deferredFailure=null;let delayedReject=null;const ctx={addCustomMessageListener(ns,fn){listeners[ns]=fn},sendCustomMessage(ns,to,data){sent.push({ns,to,data});if(deliveryFailure)return {catch(fn){fn(new Error('offline'))}};if(deferredFailure)return {catch(fn){delayedReject=fn}}},start(){}};
  const DateMock=class extends Date{constructor(...a){super(...(a.length?a:[now]))}static now(){return now}};
  const context={document:{getElementById:get,createElement:tag=>element('',tag.toUpperCase()),addEventListener(){}},window:{cast:{framework:{}}},cast:{framework:{CastReceiverContext:{getInstance:()=>ctx}}},Date:DateMock,setInterval(fn){scheduledTick=fn},console,Math};
@@ -16,73 +18,76 @@ function harness(){
  const snapshot=(sequence,session_id='session1234',state='off')=>receive({type:'snapshot',version:1,sequence,session_id,entities:[{entity_id:'light.kitchen',name:'Kitchen',state}]});
  return {get,receive,snapshot,sent,setNow:v=>{now=v},failDelivery:v=>{deliveryFailure=v},deferFailure:v=>{deferredFailure=v},rejectDelayed:()=>delayedReject?.(new Error('offline')),tick:()=>scheduledTick?.()};
 }
+// A room heading takes an entire grid row; controls remain on entity tiles.
+const entityTiles=h=>h.get('tiles').children.filter(node=>node.className==='tile');
+const roomHeadings=h=>h.get('tiles').children.filter(node=>node.className==='room-heading');
 {
  const h=harness();h.receive({type:'control_capabilities',version:1,enabled:true});assert.equal(h.get('devices').querySelector('small').textContent,'Kun visning','capabilities alone cannot enable controls');
- h.snapshot(1);h.receive({type:'control_capabilities',version:1,enabled:true});assert.equal(h.get('tiles').children[0].getAttribute('role'),'button');
- h.get('tiles').children[0].click();assert.equal(h.sent.length,1);assert.equal(h.sent[0].data.action,'turn_on');
- h.get('tiles').children[0].click();assert.equal(h.sent.length,1,'repeated tap suppressed');
- h.snapshot(2,'session1234','on');h.get('tiles').children[0].click();assert.equal(h.sent.length,2,'confirmed state permits next tap');assert.equal(h.sent[1].data.action,'turn_off');
- h.snapshot(3,'session1234','on');h.setNow(116000);h.get('tiles').children[0].click();assert.equal(h.sent.length,3,'pending timeout permits retry');
+ h.snapshot(1);h.receive({type:'control_capabilities',version:1,enabled:true});assert.equal(entityTiles(h)[0].getAttribute('role'),'button');
+ entityTiles(h)[0].click();assert.equal(h.sent.length,1);assert.equal(h.sent[0].data.action,'turn_on');
+ entityTiles(h)[0].click();assert.equal(h.sent.length,1,'repeated tap suppressed');
+ h.snapshot(2,'session1234','on');entityTiles(h)[0].click();assert.equal(h.sent.length,2,'confirmed state permits next tap');assert.equal(h.sent[1].data.action,'turn_off');
+ h.snapshot(3,'session1234','on');h.setNow(116000);entityTiles(h)[0].click();assert.equal(h.sent.length,3,'pending timeout permits retry');
 }
 {
- const h=harness();h.snapshot(1);h.receive({type:'control_capabilities',version:1,enabled:true});h.snapshot(1,'session1234','on');assert.equal(h.get('tiles').children[0].textContent,'');assert.equal(h.get('tiles').children[0].children[1].textContent,'off','duplicate sequence ignored');
- h.snapshot(2,'bad!','on');assert.equal(h.get('tiles').children[0].children[1].textContent,'off','invalid session rejected');
- h.receive({type:'snapshot',version:1,entities:[{entity_id:'light.kitchen',name:'Kitchen',state:'on'}]});assert.equal(h.get('tiles').children[0].children[1].textContent,'off','unsequenced snapshot rejected');
- h.snapshot(1,'another123','on');assert.equal(h.get('tiles').children[0].children[1].textContent,'on','new session accepted');assert.equal(h.get('tiles').children[0].getAttribute('role'),null,'new session revokes controls');
+ const h=harness();h.snapshot(1);h.receive({type:'control_capabilities',version:1,enabled:true});h.snapshot(1,'session1234','on');assert.equal(entityTiles(h)[0].textContent,'');assert.equal(entityTiles(h)[0].children[1].textContent,'off','duplicate sequence ignored');
+ h.snapshot(2,'bad!','on');assert.equal(entityTiles(h)[0].children[1].textContent,'off','invalid session rejected');
+ h.receive({type:'snapshot',version:1,entities:[{entity_id:'light.kitchen',name:'Kitchen',state:'on'}]});assert.equal(entityTiles(h)[0].children[1].textContent,'off','unsequenced snapshot rejected');
+ h.snapshot(1,'another123','on');assert.equal(entityTiles(h)[0].children[1].textContent,'on','new session accepted');assert.equal(entityTiles(h)[0].getAttribute('role'),null,'new session revokes controls');
 }
 {
  const h=harness();h.snapshot(1);h.receive({type:'control_capabilities',version:1,enabled:true});
- assert.equal(h.get('tiles').children[0].getAttribute('role'),'button');
- h.get('tiles').children[0].click();
+ assert.equal(entityTiles(h)[0].getAttribute('role'),'button');
+ entityTiles(h)[0].click();
  assert.equal(h.sent.length,1,'control request pending before timeout');
  h.setNow(146000);h.tick();
  assert.equal(h.get('indicator').className,'stale','timeout marks connection stale');
- assert.equal(h.get('tiles').children[0].getAttribute('role'),null,'stale snapshot revokes control');
+ assert.equal(entityTiles(h)[0].getAttribute('role'),null,'stale snapshot revokes control');
  h.receive({type:'control_capabilities',version:1,enabled:true});
- assert.equal(h.get('tiles').children[0].getAttribute('role'),null,'capabilities alone cannot re-enable stale controls');
+ assert.equal(entityTiles(h)[0].getAttribute('role'),null,'capabilities alone cannot re-enable stale controls');
  h.snapshot(2);h.receive({type:'control_capabilities',version:1,enabled:true});
- assert.equal(h.get('tiles').children[0].getAttribute('role'),'button','fresh snapshot restores controls');
- h.get('tiles').children[0].click();
+ assert.equal(entityTiles(h)[0].getAttribute('role'),'button','fresh snapshot restores controls');
+ entityTiles(h)[0].click();
  assert.equal(h.sent.length,2,'reconnection clears pending controls from expired session');
 }
 {
  const h=harness();h.snapshot(1);
  h.receive({type:'control_capabilities',version:1,enabled:true},'different-sender');
- assert.equal(h.get('tiles').children[0].getAttribute('role'),null,'other sender cannot enable controls');
+ assert.equal(entityTiles(h)[0].getAttribute('role'),null,'other sender cannot enable controls');
  h.receive({type:'control_capabilities',version:1,enabled:true},'sender-1');
- assert.equal(h.get('tiles').children[0].getAttribute('role'),'button','snapshot sender can enable controls');
+ assert.equal(entityTiles(h)[0].getAttribute('role'),'button','snapshot sender can enable controls');
  h.receive({type:'control_capabilities',version:1,enabled:false},'different-sender');
- assert.equal(h.get('tiles').children[0].getAttribute('role'),'button','foreign sender cannot revoke active controls');
+ assert.equal(entityTiles(h)[0].getAttribute('role'),'button','foreign sender cannot revoke active controls');
  h.receive({type:'snapshot',version:1,sequence:1,session_id:'other12345',entities:[{entity_id:'light.kitchen',name:'Kitchen',state:'on'}]},'different-sender');
- assert.equal(h.get('tiles').children[0].getAttribute('role'),null,'sender switch revokes controls');
+ assert.equal(entityTiles(h)[0].getAttribute('role'),null,'sender switch revokes controls');
 }
 {
  const h=harness();h.snapshot(1);h.receive({type:'control_capabilities',version:1,enabled:true});
- h.failDelivery(true);h.get('tiles').children[0].click();
+ h.failDelivery(true);entityTiles(h)[0].click();
  assert.equal(h.sent.length,1);
  assert.equal(h.get('connection').textContent,'Kunne ikke sende kommando','asynchronous failure is visible');
- h.failDelivery(false);h.get('tiles').children[0].click();
+ h.failDelivery(false);entityTiles(h)[0].click();
  assert.equal(h.sent.length,2,'failed delivery does not lock out retries');
 }
 {
  const h=harness();h.snapshot(1);
  const duplicate={entity_id:'light.kitchen',name:'Kitchen',state:'on'};
  h.receive({type:'snapshot',version:1,session_id:'session1234',sequence:2,entities:[duplicate,duplicate]});
- assert.equal(h.get('tiles').children.length,1,'duplicate entity IDs rejected');
- assert.equal(h.get('tiles').children[0].children[1].textContent,'off','invalid snapshot does not overwrite state');
+ assert.equal(entityTiles(h).length,1,'duplicate entity IDs rejected');
+ assert.equal(entityTiles(h)[0].children[1].textContent,'off','invalid snapshot does not overwrite state');
  h.snapshot(2,'session1234','on');
- assert.equal(h.get('tiles').children[0].children[1].textContent,'on','rejected snapshot does not advance sequence');
+ assert.equal(entityTiles(h)[0].children[1].textContent,'on','rejected snapshot does not advance sequence');
 }
 {
  const h=harness();h.snapshot(1);
- h.receive({type:'snapshot',version:1,session_id:'session1234',sequence:2,entities:[{entity_id:'light.kitchen',name:'Bad\\u0085Name',state:'on'}]});
- assert.equal(h.get('tiles').children[0].children[1].textContent,'off','C1 control character rejected');
+ h.receive({type:'snapshot',version:1,session_id:'session1234',sequence:2,entities:[{entity_id:'light.kitchen',name:'Bad' + String.fromCharCode(0x85) + 'Name',state:'on'}]});
+ assert.equal(entityTiles(h)[0].children[1].textContent,'off','C1 control character rejected');
  h.snapshot(2,'session1234','on');
- assert.equal(h.get('tiles').children[0].children[1].textContent,'on','rejected text does not advance sequence');
+ assert.equal(entityTiles(h)[0].children[1].textContent,'on','rejected text does not advance sequence');
 }
 {
  const h=harness();h.snapshot(1);h.receive({type:'control_capabilities',version:1,enabled:true});
- h.deferFailure(true);h.get('tiles').children[0].click();
+ h.deferFailure(true);entityTiles(h)[0].click();
  h.setNow(146000);h.tick();
  h.rejectDelayed();
  assert.equal(h.get('connection').textContent,'Forbindelsen er afbrudt','late delivery failure cannot overwrite disconnect status');
@@ -106,17 +111,22 @@ function harness(){
   {entity_id:'sensor.bedroom',name:'Temperatur',state:'21',room:'Soveværelse'},
   {entity_id:'light.bedroom',name:'Lampe',state:'off',room:'Soveværelse'}
  ]});
- assert.equal(h.get('tiles').children.length,3,'room grouping retains all tiles');
- assert.equal(h.get('tiles').children[0].dataset.room,'Køkken','first room heading');
- assert.equal(h.get('tiles').children[1].dataset.room,'Soveværelse','second room heading');
- assert.equal(h.get('tiles').children[2].dataset.room,undefined,'room heading not repeated');
+ assert.equal(entityTiles(h).length,3,'room grouping retains all tiles');
+ assert.equal(roomHeadings(h).length,2,'exactly one full-width heading per room');
+ assert.deepEqual(roomHeadings(h).map(node=>node.textContent),
+                  ['Køkken','Soveværelse'],'headings use actual room names');
+ assert.equal(entityTiles(h)[0].dataset.room,'Køkken','first tile belongs to kitchen');
+ assert.equal(entityTiles(h)[1].dataset.room,'Soveværelse','second tile belongs to bedroom');
+ assert.equal(entityTiles(h)[2].dataset.room,'Soveværelse','third tile belongs to bedroom');
+ assert.deepEqual(h.get('tiles').children.map(node=>node.tagName),
+                  ['H3','DIV','H3','DIV','DIV'],'new room starts on its own grid row');
 }
 {
  const h=harness();
  h.receive({type:'snapshot',version:1,sequence:1,session_id:'session1234',entities:[
   {entity_id:'climate.living',name:'Varme',state:'heat',room:'Stue',current_temperature:21,temperature:23}
  ]});
- const tile=h.get('tiles').children[0];
+ const tile=entityTiles(h)[0];
  assert.equal(tile.children[2].textContent,'Nu 21 °C · Mål 23 °C','climate current and target shown');
  assert.equal(tile.getAttribute('role'),null,'climate control remains read-only');
 }
@@ -125,7 +135,7 @@ function harness(){
  h.receive({type:'snapshot',version:1,sequence:1,session_id:'session1234',entities:[
   {entity_id:'camera.front_door',name:'Hoveddør',state:'idle',room:'Entré'}
  ]});
- const tile=h.get('tiles').children[0];
+ const tile=entityTiles(h)[0];
  assert.equal(tile.dataset.room,'Entré','camera grouped in assigned room');
  assert.match(tile.children[2].textContent,/livevisning kræver sikker streamforbindelse/,'camera stream limitation visible');
  assert.equal(tile.getAttribute('role'),null,'camera is not an unsafe control');
@@ -135,9 +145,9 @@ function harness(){
  h.receive({type:'snapshot',version:1,sequence:1,session_id:'session1234',entities:[
   {entity_id:'climate.living',name:'Varme',state:'heat',room:'Stue',current_temperature:21,temperature:22}
  ]});
- assert.equal(h.get('tiles').children[0].children.length,3,'thermostat read-only before capability');
+ assert.equal(entityTiles(h)[0].children.length,3,'thermostat read-only before capability');
  h.receive({type:'control_capabilities',version:1,enabled:true});
- const tile=h.get('tiles').children[0];
+ const tile=entityTiles(h)[0];
  assert.equal(tile.children.length,5,'thermostat buttons appear only with opt-in');
  tile.children[4].click();
  assert.equal(h.sent[0].data.action,'set_temperature');
@@ -147,7 +157,7 @@ function harness(){
  h.receive({type:'snapshot',version:1,sequence:2,session_id:'session1234',entities:[
   {entity_id:'climate.living',name:'Varme',state:'heat',room:'Stue',current_temperature:21,temperature:22.5}
  ]});
- h.get('tiles').children[0].children[4].click();
+ entityTiles(h)[0].children[4].click();
  assert.equal(h.sent.length,2,'confirmed temperature permits next adjustment');
  assert.equal(h.sent[1].data.temperature,23,'next adjustment uses confirmed target');
 }
@@ -159,6 +169,16 @@ function harness(){
  h.receive({type:'snapshot',version:1,sequence:2,session_id:'session1234',entities:[
   {entity_id:'climate.living',name:'Varme',state:'heat',room:'Stue',temperature:'not-a-number'}
  ]});
- assert.equal(h.get('tiles').children[0].children[2].textContent,'Mål 22 °C','invalid climate snapshot rejected');
+ assert.equal(entityTiles(h)[0].children[2].textContent,'Mål 22 °C','invalid climate snapshot rejected');
+}
+{
+ const h=harness();
+ const suspicious='<img src=x onerror=alert(1)>';
+ h.receive({type:'snapshot',version:1,sequence:1,session_id:'session1234',entities:[
+  {entity_id:'sensor.living',name:'Room sensor',state:'ok',room:suspicious}
+ ]});
+ assert.equal(roomHeadings(h)[0].textContent,suspicious,'room name uses textContent, never HTML');
+ assert.equal(roomHeadings(h)[0].tagName,'H3','room heading is accessible semantic text');
+ assert.equal(entityTiles(h).length,1);
 }
 console.log('Receiver behavior checks OK');
