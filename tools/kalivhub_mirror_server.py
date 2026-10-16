@@ -16,6 +16,8 @@ import os
 import queue
 import re
 import socket
+import urllib.error
+import urllib.request
 import threading
 import time
 import uuid
@@ -340,7 +342,40 @@ class CastSender:
                 time.sleep(1)
 
 
-def serve(cast_host: str, app_id: str, bind: str, port: int, secret: str):
+def post_signed_selftest(bind: str, port: int, secret: str) -> int:
+    """Send one signed display-only event through the real local HTTP boundary.
+
+    Always bypasses system proxy settings. Never prints the shared secret or
+    includes it in a URL. The localhost caller must target the bound interface.
+    """
+    payload = json.dumps({
+        "version": 1,
+        "type": "assistant_complete",
+        "event_id": str(uuid.uuid4()),
+        "text": "KalivHub: forbindelsestest fra riggen",
+    }, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    timestamp = str(int(time.time()))
+    signature = "v1=" + hmac.new(
+        secret.encode("utf-8"), timestamp.encode("ascii") + b"\n" + payload,
+        hashlib.sha256,
+    ).hexdigest()
+    request = urllib.request.Request(
+        f"http://{bind}:{port}/v1/events",
+        data=payload,
+        headers={
+            "Content-Type": "application/json",
+            "X-Kaliv-Timestamp": timestamp,
+            "X-Kaliv-Signature": signature,
+        },
+        method="POST",
+    )
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    with opener.open(request, timeout=5) as response:
+        return response.status
+
+
+def serve(cast_host: str, app_id: str, bind: str, port: int, secret: str,
+          startup_test: bool = False):
     pending: queue.Queue = queue.Queue(maxsize=16)
     protocol = MirrorProtocol(secret, pending)
     sender = CastSender(cast_host, app_id)
@@ -365,6 +400,21 @@ def serve(cast_host: str, app_id: str, bind: str, port: int, secret: str):
     server = BoundedHttpServer((bind, port), build_handler(protocol))
     threading.Thread(target=worker, name="kalivhub-cast", daemon=True).start()
     print(f"KalivHub mirror listening on {bind}:{port} (Cast {cast_host}); opt-in only", flush=True)
+    if startup_test:
+        def run_self_test():
+            # The socket is already bound; allow serve_forever to accept.
+            time.sleep(0.2)
+            try:
+                status = post_signed_selftest(bind, port, secret)
+                if status == 202:
+                    print("Startup HTTP self-test queued; check Nest Hub display / Cast ACK", flush=True)
+                else:
+                    print(f"Startup HTTP self-test returned unexpected status {status}", flush=True)
+            except (urllib.error.URLError, OSError) as exc:
+                print("Startup HTTP self-test failed:", type(exc).__name__, flush=True)
+
+        threading.Thread(target=run_self_test, name="kalivhub-smoke",
+                         daemon=True).start()
     try:
         server.serve_forever(poll_interval=0.25)
     except KeyboardInterrupt:
@@ -383,6 +433,8 @@ def main():
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--allow-lan", action="store_true", help="Explicitly permit binding private LAN interface")
     parser.add_argument("--secret-env", default="KALIVHUB_MIRROR_SECRET")
+    parser.add_argument("--startup-test", action="store_true",
+                        help="Explicitly queue one signed HTTP test reply for physical Cast verification")
     args = parser.parse_args()
     if not private_lan_ipv4(args.cast_host):
         parser.error("--cast-host must be a private LAN IPv4 literal")
@@ -401,7 +453,8 @@ def main():
     secret = os.environ.get(args.secret_env, "")
     if len(secret) < 32:
         parser.error(f"Set {args.secret_env} to a random secret of at least 32 characters")
-    serve(args.cast_host, args.app_id, bind_address, args.port, secret)
+    serve(args.cast_host, args.app_id, bind_address, args.port, secret,
+          startup_test=args.startup_test)
 
 
 if __name__ == "__main__":
