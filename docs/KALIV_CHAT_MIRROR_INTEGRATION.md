@@ -4,12 +4,12 @@
 
 **Verificeret fysisk:** Google Nest Hub 2 modtog `SHOW_MESSAGE` og `SET_STATE` fra ModelRig; to sammenhængende chatbeskeder og samtalekontekst virkede. Mikrofonadgang via Cast Web Receiver gav `NotFoundError` og bruges **ikke** til automatisk spejling.
 
-**Automatiske tests er grønne på receiver-commit `dc84358` og Android-commit `d8d3124`. Den nyeste ekstra readiness-kontrol afventer egen CI; hele forbindelsen kræver stadig fysisk validering:** Android sender færdige assistentsvar som autentificerede, afgrænsede events til riggens lokale KalivHub-modtager. Modtageren spejler beskederne på Nest Hub uden et ekstra modelkald.
+**Automatiske tests er grønne på receiver-commit `19fce07` og Android-commit `d8d3124`. Androids exact-head-kontrol er ikke grøn, og hele forbindelsen kræver stadig fysisk validering:** Android sender færdige assistentsvar som autentificerede, afgrænsede events til riggens lokale KalivHub-modtager. Modtageren spejler beskederne på Nest Hub uden et ekstra modelkald.
 
 - [Kaliv Android draft-PR #2206](https://github.com/Ternedal/ModelRig/pull/2206) – branch `feature/kalivhub-android-mirror-optin-20261015`.
 - [KalivHub Receiver draft-PR #3](https://github.com/Ternedal/KalivHub-Receiver/pull/3) – branch `test/nest-hub-microphone-probe`.
-- Android-test-APK, Android-kompilering/enhedstests og CodeQL er **PASS** for udviklingskoden; exact-head-merge-kontrollen er fortsat ikke grøn, fordi udviklingsbranchen er bagefter den løbende `main`. Det påvirker ikke brugen af den isolerede test-APK og begrunder, at PR'en fortsat er draft.
-- Receiver JavaScript, mikrofon-diagnostik og mirror-protokoltests: **PASS** på commit `dc84358`, alle tre workflows. Nyere commits skal have deres egne grønne checks, før de kan regnes som godkendte.
+- Android-test-APK, Android-kompilering/enhedstests og CodeQL er **PASS** for udviklingskoden; exact-head-merge-kontrollen er **FAILED** (PR merge-tree ≠ immutable head-tree, og en Stage-B downstream-kontrakt overskred sin tidsgrænse). Udviklingsbranchen er desuden bag den løbende `main`. Det påvirker ikke brugen af den isolerede test-APK, men **merge må ikke ske** før release-gates er opfyldt.
+- Receiver JavaScript, mikrofon-diagnostik, mirror-protokoltests samt Windows-readiness-kontrol: **PASS** på commit `19fce07`, alle tre workflows. [Receiverens CI-kørsler](https://github.com/Ternedal/KalivHub-Receiver/pull/3/checks).
 - Ingen merge til `main`; ingen produktions-APK er ændret.
 
 ## Test, når riggen tændes igen
@@ -94,6 +94,21 @@ I testappen: åbn chatmenuen → **Nest Hub-spejling**. Indtast `http://X.X.X.X:
 Tryk **Test** i Nest Hub-indstillingerne. `HTTP 202` betyder kun, at riggen har lagt beskeden i kø; det beviser **ikke**, at Nest Hub viste den. Kontrollér både `Cast display acknowledgement received` i riggens konsol og teksten `KalivHub: forbindelsestest` på Nest Hub.
 
 Send derefter to normale chatbeskeder, og prøv gerne cloud, retry og færdig stemmesamtale. Afbryd Nest Hub, og kontrollér at chatten på telefonen stadig virker upåvirket. Test også at beskeder, der blev køet før **Deaktivér** eller en ændring af spejlingsnøgle, ikke vises senere; en besked, der ligger i kø mere end 30 sekunder, skal droppes – både i Android og hos riggens Cast-modtager. Også en langsom Cast-opstart/genforbindelse skal opgive udløbne svar. Allerede påbegyndte HTTP-kald kan dog ikke trækkes tilbage efter de er sendt.
+
+## Fysisk fejlsøgning — i hvilken del af kæden stopper det?
+
+| Observation | Hvad det betyder | Næste sikre kontrol |
+| --- | --- | --- |
+| `test-kalivhub-readiness.ps1` melder manglende `py`/PyChromecast | Modtagerens Windows-miljø er ikke klart | Find korrekt Python 3.11+ og installer `pychromecast>=13,<15` i **det samme** Python-miljø, som starteren bruger |
+| Ingen `KalivHub mirror listening on X.X.X.X:8765` | Riggens HTTP-server kom ikke i gang | Kontrollér traceback, private bind-adresse og at port 8765 ikke er optaget; åbn ikke hele firewallen |
+| Android kan ikke nå riggens IP/port | Telefon → rig-netværksstien mangler | Bekræft samme betroede LAN eller gyldig Tailscale-rute, og brug eventuelt den **frivillige /32-firewallregel** |
+| HTTP `401` | Forkert spejlingsnøgle, signatur eller urforskel over 60 sekunder | Kontrollér riggens og telefonens automatiske urindstilling samt nøjagtig nøgle; læg ikke nøglen i logs/chat |
+| HTTP `400`, `408`, `410`, `413` eller `503` | Ugyldigt/ufuldstændigt, for gammelt, for stort eller købegrænset event | Se statusforklaringerne nedenfor; lad være med at øge grænserne uden konkret årsag |
+| HTTP `202`, men ingen `Cast display acknowledgement received` | Modtageren har køet, men Cast er ikke bekræftet | Kontrollér Nest Hub på TCP 8009 med `-CheckCast`, App ID, og at den registrerede receiver faktisk kan vises; lad `-StrictAcks` være slået fra på gammel deployment |
+| Cast ACK, men ingen synlig tekst | Cast svarer, men fysisk visning er ikke accepteret | Tjek den rigtige Nest Hub-skærm, receiverens faktiske visning og om indholdet allerede er ryddet |
+| Normal Kaliv-chat virker, men intet spejles | Spejling er en frivillig sidekanal | Kontrollér om den **separate** testapp er parret/aktiveret, og at du tester et færdigt assistentsvar |
+
+**Testsekvens:** Først read-only readiness, så signerede rig-`SelfTest`, derefter Androids `Test`-knap, til sidst to almindelige svar og en afbrudt forbindelse. Et HTTP `202` er **aldrig** alene bevis for en vist besked. Giv ikke hemmelige nøgler eller samtaleindhold videre ved fejlsøgning.
 
 ## Sikkerhed og diagnose
 
