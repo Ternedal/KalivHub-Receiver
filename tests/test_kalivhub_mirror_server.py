@@ -105,6 +105,43 @@ class ProtocolTests(unittest.TestCase):
             (202, "accepted"),
         )
 
+    def test_signed_event_past_display_deadline_is_never_queued(self):
+        signed_at = 1700000000
+        body, ts, sig = signed_payload(timestamp=str(signed_at))
+        self.assertEqual(
+            self.proto.accept(body, ts, sig, now=signed_at + 35),
+            (410, "expired"),
+        )
+        self.assertTrue(self.queue.empty())
+
+    def test_signed_event_preserves_transport_age_for_cast_ttl(self):
+        signed_at = 1700000000
+        body, ts, sig = signed_payload(timestamp=str(signed_at))
+        with patch("kalivhub_mirror_server.time.monotonic", return_value=1000.0):
+            self.assertEqual(
+                self.proto.accept(body, ts, sig, now=signed_at + 25),
+                (202, "accepted"),
+            )
+        answer = self.queue.get_nowait()
+        self.assertEqual(answer.text, "Hej fra Kaliv")
+        self.assertEqual(answer.queued_at, 975.0)
+        sender = CastSender("192.168.1.13", "E975D483")
+        shown = []
+        sender.show_answer = lambda text, expires_at=None: shown.append(text)
+        self.assertFalse(deliver_pending(sender, answer, now=1006.0))
+        self.assertEqual(shown, [])
+
+    def test_future_signed_time_does_not_extend_pending_reply_ttl(self):
+        signed_at = 1700000000
+        body, ts, sig = signed_payload(timestamp=str(signed_at + 30))
+        with patch("kalivhub_mirror_server.time.monotonic", return_value=1000.0):
+            self.assertEqual(
+                self.proto.accept(body, ts, sig, now=signed_at),
+                (202, "accepted"),
+            )
+        answer = self.queue.get_nowait()
+        self.assertEqual(answer.queued_at, 1000.0)
+
     def test_invalid_auth_does_not_enqueue(self):
         body, ts, sig = signed_payload()
         self.assertEqual(self.proto.accept(body, ts, "v1=" + "0"*64)[0], 401)
