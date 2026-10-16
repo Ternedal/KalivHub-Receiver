@@ -29,6 +29,21 @@ jobs:
           python-version: "3.12"
       - name: Validate syntax
         run: python -m py_compile tools/kalivhub_mirror_server.py
+      - name: Validate PyChromecast sender API against installable version
+        run: |
+          python -m pip install 'pychromecast>=13,<15'
+          python - <<'PY'
+          import inspect
+          import pychromecast
+          from pychromecast.controllers import BaseController
+          assert callable(pychromecast.get_chromecast_from_host)
+          assert callable(pychromecast.Chromecast.start_app)
+          assert callable(pychromecast.Chromecast.register_handler)
+          assert callable(pychromecast.Chromecast.disconnect)
+          assert callable(BaseController.send_message)
+          assert "supporting_app_id" in inspect.signature(BaseController.__init__).parameters
+          print("PASS: KalivHub Cast sender APIs available in installed PyChromecast")
+          PY
       - name: Run offline security and HTTP contract tests
         run: python -m unittest discover -s tests -p test_kalivhub_mirror_server.py -v
 
