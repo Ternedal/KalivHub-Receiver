@@ -334,7 +334,13 @@ class CastSender:
 
             self_app_id = self.app_id
             controller = Controller()
-            cast.register_handler(controller)
+            # PyChromecast 14 exposes registration via socket_client;
+            # other releases also forward it from Chromecast itself.
+            # Accommodate both rather than fail to start the bridge.
+            register = getattr(cast, "register_handler", None)
+            if not callable(register):
+                register = cast.socket_client.register_handler
+            register(controller)
             if not cast.status or cast.status.app_id != self.app_id:
                 cast.start_app(self.app_id)
                 time.sleep(3)
