@@ -32,6 +32,10 @@ Windows-starteren opretter en separat tilfældig 256-bit HMAC-nøgle første gan
 
 **Cast-kvitteringer:** Den nye receiver-kilde kan sende et tilfældigt kommando-ID retur, så sene kvitteringer ikke forveksles med nye beskeder. Den nuværende Netlify-deployment er ikke automatisk opdateret af ændringer på testbranchen; Python-senderen understøtter stadig kvitteringer uden ID. Først når den nye receiver er deployet og fysisk testet, kan korrelerede kvitteringer regnes som aktiv beskyttelse.
 
+**Valgfri streng kvitteringstilstand – først EFTER receiver-opgradering:**
+Brug `-StrictAcks` på `start-kalivhub-mirror.ps1`, hvis Cast Web Receiver er deployet med ekko af `request_id`. Så accepteres kun kvitteringer, der matcher den aktuelle kommando, også umiddelbart efter genforbindelse. Funktionen er **slået fra som standard** for fortsat at understøtte den gamle deployment. Brug den ikke med den nuværende gamle Netlify-receiver: selvtesten vil ellers fejle efter 6 sekunders ACK-timeout. Ingen scripts ændrer Netlify-konfiguration automatisk.
+
+
 Med `-SelfTest` sender starteren én HMAC-signeret HTTP-testbesked via riggens faktiske lokale endpoint. Kig efter `Startup HTTP self-test queued` og derefter `Cast display acknowledgement received`. Kontrollér samtidig teksten **KalivHub: forbindelsestest fra riggen** på Nest Hub. En HTTP 202-kvittering alene beviser ikke skærmvisning; den fysiske kvittering kommer separat. `-SelfTest` er frivillig og sender intet uden flaget.
 
 **Valgfri skærmrydning:** Hvis du ønsker, at Nest Hub automatisk skal fjerne den viste tekst efter tre minutter uden nye svar, starter du i stedet med:
