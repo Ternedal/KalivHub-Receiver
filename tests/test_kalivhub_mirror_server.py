@@ -229,6 +229,25 @@ class HttpTests(unittest.TestCase):
         code, _ = self.request("POST", "/v1/events", body, headers)
         self.assertEqual(code, 409)
 
+    def test_slow_partial_body_times_out_and_does_not_queue(self):
+        # An unauthenticated LAN client must not hold a handler forever.
+        with patch("kalivhub_mirror_server.READ_TIMEOUT_SECONDS", 0.2):
+            client = http.client.HTTPConnection(
+                "127.0.0.1", self.server.server_port, timeout=3,
+            )
+            try:
+                client.putrequest("POST", "/v1/events")
+                client.putheader("Content-Type", "application/json")
+                client.putheader("Content-Length", "100")
+                client.endheaders()
+                client.send(b"x")
+                response = client.getresponse()
+                self.assertEqual(response.status, 408)
+                response.read()
+                self.assertTrue(self.events.empty())
+            finally:
+                client.close()
+
     def test_missing_auth_and_bad_endpoint(self):
         body, _, _ = signed_payload()
         self.assertEqual(self.request("POST", "/v1/events", body,
