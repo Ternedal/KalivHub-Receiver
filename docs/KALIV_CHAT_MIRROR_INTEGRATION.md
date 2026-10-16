@@ -49,7 +49,27 @@ Standardværdien er `0` (ingen automatisk rydning), og funktionen ændrer ikke g
 
 Starteren finder selv den lokale IP-adresse, som riggen ville bruge til at nå Nest Hub på `192.168.1.13`; IP-valget udsender **ingen** UDP-datapakke. Den åbner kun denne specifikke private IPv4-adresse på TCP-port `8765`. Den opretter **ingen** Windows-firewallregel og ændrer ikke riggens ModelRig-worker, Ollama eller produktionsservices.
 
-Se efter loglinjen `KalivHub mirror listening on X.X.X.X:8765`; adressen `X.X.X.X` er **riggens** LAN-adresse. Brug denne adresse i Android, ikke Nest Hubs IP. Hvis Windows-firewall blokerer forbindelsen, tillad kun TCP `8765` fra telefonen/det betroede private net (begræns gerne til telefonens IP). Undgå offentlig portåbning, port-forwarding og `0.0.0.0`.
+Se efter loglinjen `KalivHub mirror listening on X.X.X.X:8765`; adressen `X.X.X.X` er **riggens** LAN-adresse. Brug denne adresse i Android, ikke Nest Hubs IP. Hvis Windows Firewall blokerer forbindelsen, kan du **frivilligt** oprette en regel, der kun giver telefonens præcise private IPv4-adresse adgang til TCP `8765`. Starteren ændrer aldrig firewallen af sig selv.
+
+Åbn en **separat PowerShell med administratorrettigheder** på riggen. Find telefonens aktuelle IP under Android → Wi-Fi → det tilsluttede netværk → netværksoplysninger (ordlyden varierer). Erstat nedenstående eksempeladresse med telefonens faktiske IP:
+
+```powershell
+cd C:\Rig\src\KalivHub-Receiver
+# Vis planlagt ændring uden at åbne firewallen:
+pwsh -NoProfile -File .\tools\set-kalivhub-firewall.ps1 -PhoneIp 192.168.1.22 -WhatIf
+# Anvend kun hvis IP-adressen er korrekt:
+pwsh -NoProfile -File .\tools\set-kalivhub-firewall.ps1 -PhoneIp 192.168.1.22
+```
+
+Hjælpescriptet accepterer kun én normaliseret privat IPv4-adresse (`/32`) og **kun Windows' Private-netværksprofil**. Det afviser offentlige adresser, værtsnavne, CIDR-subnet og jokertegn. Hvis telefonens IP ændres, kør kommandoen igen med dens nye adresse. Hvis netværksprofilen er Public (fx på nogle Tailscale-adaptere), åbner denne regel ikke automatisk adgang; ændr ikke til offentlig adgang uden en konkret sikkerhedsvurdering. En anden app eller firewallregel kan også påvirke adgang.
+
+Når spejlingen ikke længere skal testes, kan den ene regel fjernes fra samme administrator-PowerShell:
+
+```powershell
+pwsh -NoProfile -File .\tools\set-kalivhub-firewall.ps1 -Remove
+```
+
+Undgå offentlig portåbning, port-forwarding og bind til `0.0.0.0`.
 
 For at stoppe: tryk Ctrl+C i PowerShell. Serveren kører ikke automatisk som en baggrundsservice. HTTP-listeneren stopper først, og den separate Cast-worker afslutter derefter sit igangværende arbejde og lukker selv Cast-forbindelsen. En igangværende Cast-kald kan forsinke afslutningen kortvarigt; hovedtråden forsøger ikke at lukke forbindelsen samtidig.
 
