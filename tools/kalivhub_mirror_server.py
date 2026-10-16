@@ -312,7 +312,12 @@ class CastSender:
             self.cast = cast
             self.controller = controller
         except Exception:
-            cast.disconnect()
+            # PyChromecast's disconnect can itself fail after a broken socket.
+            # Never replace the original launch/register error with cleanup.
+            try:
+                cast.disconnect()
+            except Exception:
+                pass
             raise
 
     def disconnect(self):
