@@ -8,6 +8,7 @@ on:
       - tools/set-kalivhub-firewall.ps1
       - tests/test_kalivhub_mirror_server.py
       - tests/test_kalivhub_firewall.ps1
+      - tests/test_kalivhub_bind.ps1
       - .github/workflows/mirror-tests.yml
   push:
     branches: [test/nest-hub-microphone-probe]
@@ -18,6 +19,7 @@ on:
       - tools/set-kalivhub-firewall.ps1
       - tests/test_kalivhub_mirror_server.py
       - tests/test_kalivhub_firewall.ps1
+      - tests/test_kalivhub_bind.ps1
       - .github/workflows/mirror-tests.yml
   workflow_dispatch:
 
@@ -103,6 +105,9 @@ jobs:
       - name: Verify phone-only firewall safety without changing Windows firewall
         shell: pwsh
         run: ./tests/test_kalivhub_firewall.ps1
+      - name: Verify optional private or Tailscale bind without opening sockets
+        shell: pwsh
+        run: ./tests/test_kalivhub_bind.ps1
       - name: Verify real DPAPI encryption and stable reuse (no receiver)
         shell: pwsh
         run: |
