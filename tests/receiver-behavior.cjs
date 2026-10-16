@@ -80,7 +80,7 @@ const roomHeadings=h=>h.get('tiles').children.filter(node=>node.className==='roo
 }
 {
  const h=harness();h.snapshot(1);
- h.receive({type:'snapshot',version:1,session_id:'session1234',sequence:2,entities:[{entity_id:'light.kitchen',name:'Bad\\u0085Name',state:'on'}]});
+ h.receive({type:'snapshot',version:1,session_id:'session1234',sequence:2,entities:[{entity_id:'light.kitchen',name:'Bad' + String.fromCharCode(0x85) + 'Name',state:'on'}]});
  assert.equal(entityTiles(h)[0].children[1].textContent,'off','C1 control character rejected');
  h.snapshot(2,'session1234','on');
  assert.equal(entityTiles(h)[0].children[1].textContent,'on','rejected text does not advance sequence');
