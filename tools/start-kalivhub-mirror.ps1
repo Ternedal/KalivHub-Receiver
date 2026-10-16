@@ -5,7 +5,8 @@
 param(
     [string]$CastHost = '192.168.1.13',
     [ValidateRange(1, 65535)][int]$Port = 8765,
-    [switch]$ShowSecret
+    [switch]$ShowSecret,
+    [switch]$VerifyKeyOnly
 )
 
 Set-StrictMode -Version Latest
@@ -54,6 +55,12 @@ if ([IO.File]::Exists($keyFile)) {
 
 if ($secret -cnotmatch '^[0-9a-f]{64}$') {
     throw 'Stored mirror secret has invalid format. Refusing to start.'
+}
+
+if ($VerifyKeyOnly) {
+    # Offline Windows/DPAPI test: no Cast connection, no cleartext output.
+    Write-Host 'PASS: KalivHub mirror key initialized, decrypted and validated (DPAPI CurrentUser).'
+    return
 }
 
 if ($ShowSecret) {
