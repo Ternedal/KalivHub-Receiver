@@ -217,7 +217,7 @@ class CastSender:
         self.app_id = app_id
         self.cast = None
         self.controller = None
-        self.acks: queue.Queue = queue.Queue()
+        self.acks: queue.Queue = queue.Queue(maxsize=64)
 
     def connect(self):
         import pychromecast
@@ -236,7 +236,19 @@ class CastSender:
 
                 def receive_message(self, _message, data):
                     if isinstance(data, dict):
-                        inbound.put(data)
+                        try:
+                            inbound.put_nowait(data)
+                        except queue.Full:
+                            # Diagnostics may send unsolicited events for hours.
+                            # Receiver callbacks must never block or grow memory.
+                            try:
+                                inbound.get_nowait()
+                            except queue.Empty:
+                                pass
+                            try:
+                                inbound.put_nowait(data)
+                            except queue.Full:
+                                pass
                     return True
 
             self_app_id = self.app_id
