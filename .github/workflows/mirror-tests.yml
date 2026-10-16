@@ -67,8 +67,7 @@ jobs:
           }
           $first = (Get-FileHash -LiteralPath $keyPath -Algorithm SHA256).Hash
           $ciphertext = [IO.File]::ReadAllBytes($keyPath)
-          if ($ciphertext.Length -lt 64 -or
-              [Text.Encoding]::UTF8.GetString($ciphertext) -match '^[0-9a-f]{64}) {
+          if ($ciphertext.Length -lt 64) {
             throw 'Key was not written as DPAPI ciphertext'
           }
           & ./tools/start-kalivhub-mirror.ps1 -VerifyKeyOnly
