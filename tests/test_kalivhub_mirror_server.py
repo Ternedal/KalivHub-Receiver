@@ -74,6 +74,24 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(self.proto.accept(body, str(int(ts)-600), sig)[0], 401)
         self.assertTrue(self.queue.empty())
 
+    def test_untrusted_signature_header_never_crashes_hmac_comparison(self):
+        body, ts, valid = signed_payload()
+        for malformed in (
+            "v1=é", "v1=" + "a" * 63, "v1=" + "A" * 64,
+            "v1=" + "g" * 64, "v2=" + "a" * 64,
+            "v1=" + "a" * 65, "", None,
+        ):
+            with self.subTest(signature=repr(malformed)):
+                self.assertEqual(
+                    self.proto.accept(body, ts, malformed),
+                    (401, "unauthorized"),
+                )
+                self.assertTrue(self.queue.empty())
+        self.assertEqual(
+            self.proto.accept(body, ts, valid),
+            (202, "accepted"),
+        )
+
     def test_forged_message_is_rejected(self):
         body, ts, sig = signed_payload()
         altered = body.replace(b"Hej fra Kaliv", b"Snyd")
@@ -600,6 +618,17 @@ class HttpTests(unittest.TestCase):
         code, payload = self.request("GET", "/healthz")
         self.assertEqual(code, 200)
         self.assertEqual(json.loads(payload)["status"], "accepting")
+
+    def test_non_ascii_signature_http_header_returns_401_without_crash(self):
+        body, ts, _ = signed_payload("Hej")
+        code, data = self.request("POST", "/v1/events", body, {
+            "Content-Type": "application/json",
+            "X-Kaliv-Timestamp": ts,
+            "X-Kaliv-Signature": "v1=é",
+        })
+        self.assertEqual(code, 401)
+        self.assertEqual(json.loads(data)["status"], "unauthorized")
+        self.assertTrue(self.events.empty())
 
     def test_signed_post_and_replay(self):
         body, ts, sig = signed_payload("Hej!")
