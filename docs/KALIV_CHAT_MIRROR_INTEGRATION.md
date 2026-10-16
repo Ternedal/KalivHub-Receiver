@@ -51,7 +51,7 @@ Starteren finder selv den lokale IP-adresse, som riggen ville bruge til at nå N
 
 Se efter loglinjen `KalivHub mirror listening on X.X.X.X:8765`; adressen `X.X.X.X` er **riggens** LAN-adresse. Brug denne adresse i Android, ikke Nest Hubs IP. Hvis Windows-firewall blokerer forbindelsen, tillad kun TCP `8765` fra telefonen/det betroede private net (begræns gerne til telefonens IP). Undgå offentlig portåbning, port-forwarding og `0.0.0.0`.
 
-For at stoppe: tryk Ctrl+C i PowerShell. Serveren kører ikke automatisk som en baggrundsservice.
+For at stoppe: tryk Ctrl+C i PowerShell. Serveren kører ikke automatisk som en baggrundsservice. HTTP-listeneren stopper først, og den separate Cast-worker afslutter derefter sit igangværende arbejde og lukker selv Cast-forbindelsen. En igangværende Cast-kald kan forsinke afslutningen kortvarigt; hovedtråden forsøger ikke at lukke forbindelsen samtidig.
 
 **3. Installer isoleret Android-testbuild, når der skal fysisk testes.**
 
