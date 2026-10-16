@@ -12,6 +12,8 @@ for (const expected of [
 assert.ok(!/fetch\s*\(|XMLHttpRequest|WebSocket|MediaRecorder|sendMessage\s*\(/.test(html), 'Unexpected network or recording API');
 assert.ok(!/https?:\/\/(?!www\.gstatic\.com\/cast\/sdk\/libs\/caf_receiver\/v3\/cast_receiver_framework\.js)/.test(html), 'Unexpected external URL');
 const scripts=[...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)].map(m=>m[1]).filter(Boolean);
+assert.match(html,/request_id:requestId/, 'New receiver must reflect correlated Cast command IDs');
+assert.match(html,/requestId===\x27string\x27/, 'Echo only valid optional request IDs');
 assert.equal(scripts.length,1);
 new (require('node:vm').Script)(scripts[0],{filename:'mic-diagnostic-inline.js'});
 console.log('PASS: isolated mic probe static contract and JS syntax');
