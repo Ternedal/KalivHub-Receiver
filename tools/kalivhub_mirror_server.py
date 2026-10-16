@@ -261,9 +261,11 @@ class BoundedHttpServer(ThreadingHTTPServer):
 class CastSender:
     """Single worker owns the Cast connection and sends messages in order."""
 
-    def __init__(self, host: str, app_id: str):
+    def __init__(self, host: str, app_id: str,
+                 require_correlated_acks: bool = False):
         self.host = host
         self.app_id = app_id
+        self.require_correlated_acks = require_correlated_acks
         self.cast = None
         self.controller = None
         self.acks: queue.Queue = queue.Queue(maxsize=64)
@@ -371,7 +373,7 @@ class CastSender:
                     and ack.get("type") == expected_type
                     and ack.get("result") == expected_result and matching(ack)):
                 self.correlated_acks = True
-            if self.correlated_acks and ack_id != request_id:
+            if (self.require_correlated_acks or self.correlated_acks) and ack_id != request_id:
                 continue
             if ack_id is not None and ack_id != request_id:
                 continue
@@ -489,10 +491,12 @@ def display_worker(pending: queue.Queue, sender, clear_after_seconds: float = 0,
 
 
 def serve(cast_host: str, app_id: str, bind: str, port: int, secret: str,
-          startup_test: bool = False, clear_after_seconds: int = 0):
+          startup_test: bool = False, clear_after_seconds: int = 0,
+          require_correlated_acks: bool = False):
     pending: queue.Queue = queue.Queue(maxsize=16)
     protocol = MirrorProtocol(secret, pending)
-    sender = CastSender(cast_host, app_id)
+    sender = CastSender(cast_host, app_id,
+                        require_correlated_acks=require_correlated_acks)
 
     BoundedHttpServer.allow_reuse_address = True
     server = BoundedHttpServer((bind, port), build_handler(protocol))
@@ -537,6 +541,8 @@ def main():
                         help="Explicitly queue one signed HTTP test reply for physical Cast verification")
     parser.add_argument("--clear-after", type=int, default=0, metavar="SECONDS",
                         help="Optional time to clear a displayed reply; 0 disables (default)")
+    parser.add_argument("--strict-acks", action="store_true",
+                        help="Require per-command request_id on all Cast ACKs; incompatible with older deployed receiver")
     args = parser.parse_args()
     if not private_lan_ipv4(args.cast_host):
         parser.error("--cast-host must be a private LAN IPv4 literal")
@@ -558,7 +564,8 @@ def main():
     if not 0 <= args.clear_after <= 3600:
         parser.error("--clear-after must be between 0 and 3600 seconds")
     serve(args.cast_host, args.app_id, bind_address, args.port, secret,
-          startup_test=args.startup_test, clear_after_seconds=args.clear_after)
+          startup_test=args.startup_test, clear_after_seconds=args.clear_after,
+          require_correlated_acks=args.strict_acks)
 
 
 if __name__ == "__main__":
