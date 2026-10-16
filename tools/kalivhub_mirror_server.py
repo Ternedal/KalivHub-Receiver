@@ -421,17 +421,33 @@ class CastSender:
         self.send({"type": "CLEAR_MESSAGE"})
 
     def show_answer(self, text: str, expires_at: float | None = None):
+        """Attempt SHOW_MESSAGE at most once per completed reply.
+
+        A lost Cast ACK cannot distinguish "not shown" from "shown but
+        acknowledgement lost". Never resend the answer after SHOW_MESSAGE was
+        attempted: that could replay a private response or flash old content.
+        A transient failure *before* display may be retried once.
+        """
         for attempt in range(2):
             if expires_at is not None and time.monotonic() >= expires_at:
                 raise ExpiredReply("Display event expired before Cast connection")
+            display_attempted = False
             try:
                 self.send({"type": "SET_STATE", "state": "thinking"})
                 # Connecting a sleeping Nest Hub may be slower than the TTL.
                 # Never display old replies after a stalled Cast launch.
                 if expires_at is not None and time.monotonic() >= expires_at:
                     raise ExpiredReply("Display event expired while connecting to Cast")
+                display_attempted = True
                 self.send({"type": "SHOW_MESSAGE", "text": text})
-                self.send({"type": "SET_STATE", "state": "idle"})
+                # The reply is already acknowledged as displayed. A failed IDLE
+                # ACK must never trigger another SHOW_MESSAGE.
+                try:
+                    self.send({"type": "SET_STATE", "state": "idle"})
+                except Exception as exc:
+                    self.disconnect()
+                    print("Cast idle state reset failed:", type(exc).__name__,
+                          flush=True)
                 return
             except ExpiredReply:
                 # If we already displayed THINKING, try to reset the receiver
@@ -445,8 +461,15 @@ class CastSender:
                 self.disconnect()
                 raise
             except Exception:
+                # The show command could have reached the screen even when its
+                # ACK was lost. Never send this reply twice on the same turn.
+                if display_attempted and self.cast is not None and self.controller is not None:
+                    try:
+                        self.send({"type": "SET_STATE", "state": "idle"})
+                    except Exception:
+                        pass
                 self.disconnect()
-                if attempt:
+                if display_attempted or attempt:
                     raise
                 time.sleep(1)
 
