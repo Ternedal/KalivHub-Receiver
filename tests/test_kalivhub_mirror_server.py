@@ -277,6 +277,60 @@ class ProtocolTests(unittest.TestCase):
                                 "SHOW_MESSAGE", "SET_STATE"])
         self.assertEqual(disconnected, [True])
 
+    def test_correlated_cast_ack_matches_only_this_command(self):
+        sender = CastSender("192.168.1.13", "E975D483")
+        sender.connect = lambda: None
+        ids = []
+        def inbound(payload):
+            ids.append(payload["request_id"])
+            self.assertEqual(len(payload["request_id"]), 32)
+            sender.acks.put({
+                "type": "KALIV_STATE", "result": "updated",
+                "state": payload["state"],
+                "request_id": "0" * 32,
+            })
+            sender.acks.put({
+                "type": "KALIV_STATE", "result": "updated",
+                "state": payload["state"],
+                "request_id": payload["request_id"],
+            })
+        sender.controller = SimpleNamespace(send_message=inbound)
+        sender.send({"type": "SET_STATE", "state": "thinking"})
+        self.assertTrue(sender.correlated_acks)
+        self.assertEqual(sender.acks.qsize(), 0)
+        sender.send({"type": "SET_STATE", "state": "idle"})
+        self.assertNotEqual(ids[0], ids[1])
+
+    def test_correlated_receiver_never_downgrades_to_legacy_ack(self):
+        sender = CastSender("192.168.1.13", "E975D483")
+        sender.connect = lambda: None
+        sender.correlated_acks = True
+        def inbound(payload):
+            sender.acks.put({
+                "type": "KALIV_DISPLAY", "result": "shown",
+                "length": len(payload["text"]),
+            })
+            sender.acks.put({
+                "type": "KALIV_DISPLAY", "result": "shown",
+                "length": len(payload["text"]),
+                "request_id": payload["request_id"],
+            })
+        sender.controller = SimpleNamespace(send_message=inbound)
+        sender.send({"type": "SHOW_MESSAGE", "text": "Hej"})
+        self.assertTrue(sender.acks.empty())
+
+    def test_legacy_receiver_ack_still_supported_until_correlation_learned(self):
+        sender = CastSender("192.168.1.13", "E975D483")
+        sender.connect = lambda: None
+        sender.controller = SimpleNamespace(
+            send_message=lambda payload: sender.acks.put({
+                "type": "KALIV_STATE", "result": "updated",
+                "state": payload["state"],
+            })
+        )
+        sender.send({"type": "SET_STATE", "state": "thinking"})
+        self.assertFalse(sender.correlated_acks)
+
     def test_clear_display_uses_existing_receiver_ack(self):
         sender = CastSender("192.168.1.13", "E975D483")
         sender.connect = lambda: None
