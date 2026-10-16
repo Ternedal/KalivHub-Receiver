@@ -7,6 +7,7 @@ param(
     [ValidateRange(1, 65535)][int]$Port = 8765,
     [switch]$ShowSecret,
     [switch]$SelfTest,
+    [switch]$StrictAcks,
     [ValidateRange(0, 3600)][int]$ClearAfterSeconds = 0,
     [switch]$VerifyKeyOnly
 )
@@ -95,10 +96,14 @@ if ($ClearAfterSeconds -gt 0) {
 if ($SelfTest) {
     Write-Host '  Én signeret testbesked sendes gennem riggens HTTP-server til Nest Hub.'
 }
+if ($StrictAcks) {
+    Write-Host '  STRICT ACKS: kræver opdateret receiver med request_id-ekko.'
+}
 $env:KALIVHUB_MIRROR_SECRET = $secret
 try {
     $serverArgs = @($serverPath, '--cast-host', $CastHost, '--auto-bind', '--allow-lan', '--port', $Port)
     if ($SelfTest) { $serverArgs += '--startup-test' }
+    if ($StrictAcks) { $serverArgs += '--strict-acks' }
     if ($ClearAfterSeconds -gt 0) {
         $serverArgs += @('--clear-after', "$ClearAfterSeconds")
     }
