@@ -4,12 +4,12 @@
 
 **Verificeret fysisk:** Google Nest Hub 2 modtog `SHOW_MESSAGE` og `SET_STATE` fra ModelRig; to sammenhængende chatbeskeder og samtalekontekst virkede. Mikrofonadgang via Cast Web Receiver gav `NotFoundError` og bruges **ikke** til automatisk spejling.
 
-**Implementeret og offline-testet på tidligere commits, men nyeste sikkerhedsrettelser afventer CI og fysisk validering:** Android sender færdige assistentsvar som autentificerede, afgrænsede events til riggens lokale KalivHub-modtager. Modtageren spejler beskederne på Nest Hub uden et ekstra modelkald.
+**Automatiske tests er grønne på receiver-commit `dc84358` og Android-commit `d8d3124`. Den nyeste ekstra readiness-kontrol afventer egen CI; hele forbindelsen kræver stadig fysisk validering:** Android sender færdige assistentsvar som autentificerede, afgrænsede events til riggens lokale KalivHub-modtager. Modtageren spejler beskederne på Nest Hub uden et ekstra modelkald.
 
 - [Kaliv Android draft-PR #2206](https://github.com/Ternedal/ModelRig/pull/2206) – branch `feature/kalivhub-android-mirror-optin-20261015`.
 - [KalivHub Receiver draft-PR #3](https://github.com/Ternedal/KalivHub-Receiver/pull/3) – branch `test/nest-hub-microphone-probe`.
 - Android-test-APK, Android-kompilering/enhedstests og CodeQL er **PASS** for udviklingskoden; exact-head-merge-kontrollen er fortsat ikke grøn, fordi udviklingsbranchen er bagefter den løbende `main`. Det påvirker ikke brugen af den isolerede test-APK og begrunder, at PR'en fortsat er draft.
-- Receiver JavaScript, mikrofon-diagnostik og mirror-protokoltests: **PASS** på tidligere head; kontroller seneste workflow-status ved senere ændringer.
+- Receiver JavaScript, mikrofon-diagnostik og mirror-protokoltests: **PASS** på commit `dc84358`, alle tre workflows. Nyere commits skal have deres egne grønne checks, før de kan regnes som godkendte.
 - Ingen merge til `main`; ingen produktions-APK er ændret.
 
 ## Test, når riggen tændes igen
@@ -22,7 +22,17 @@ git switch test/nest-hub-microphone-probe
 git pull --ff-only
 ```
 
-**2. Start lokal modtager med én kommando.**
+**2. Kontrollér riggens forudsætninger uden at starte nogen services.**
+
+```powershell
+pwsh -NoProfile -File .\tools\test-kalivhub-readiness.ps1
+```
+
+Denne kontrol er skrivebeskyttet: Den tjekker Python 3.11+, den installerede PyChromecast-controller, nødvendige filer, eksistensen af en krypteret parringnøgle og om TCP-port 8765 allerede er optaget. Nøglen læses eller vises ikke. Hvis PyChromecast mangler, kan afhængigheden installeres på riggen med `py -m pip install "pychromecast>=13,<15"` – kun når du er ved riggen og ønsker det.
+
+For frivilligt også at afprøve selve TCP-forbindelsen fra riggen til Nest Hub (port 8009) kan du bruge `-CheckCast`. Det beviser kun netværkskontakt, **ikke** at Cast-appen er startet, at beskeden vises eller at mikrofonen fungerer.
+
+**3. Start lokal modtager med én kommando.**
 
 ```powershell
 pwsh -NoProfile -File .\tools\start-kalivhub-mirror.ps1 -ShowSecret -SelfTest
@@ -73,13 +83,13 @@ Undgå offentlig portåbning, port-forwarding og bind til `0.0.0.0`.
 
 For at stoppe: tryk Ctrl+C i PowerShell. Serveren kører ikke automatisk som en baggrundsservice. HTTP-listeneren stopper først, og den separate Cast-worker afslutter derefter sit igangværende arbejde og lukker selv Cast-forbindelsen. En igangværende Cast-kald kan forsinke afslutningen kortvarigt; hovedtråden forsøger ikke at lukke forbindelsen samtidig.
 
-**3. Installer isoleret Android-testbuild, når der skal fysisk testes.**
+**4. Installer isoleret Android-testbuild, når der skal fysisk testes.**
 
 Seneste verificerede, separat installerbare test-APK kan hentes i [GitHub Actions-build #38879737754](https://github.com/Ternedal/ModelRig/actions/runs/38879737754), commit `d8d3124`. På denne head er både Android-CI, CodeQL og APK-build grønne; testen inkluderer proxy-fri direkte lokal transport. Byggejobbet kontrollerede både korrekt test-pakkenavn og launcher-etiket. Artefaktet hedder `kalivhub-mirror-android-a425f-test-apk` og indeholder `app-a425f.apk`. GitHub har oplyst udløb **30. oktober 2026**. Appens separate id er `dk.ternedal.modelrig.a425f`: den installeres ved siden af normal Kaliv og skal parres med riggen separat. Telefonens test-app hedder **Kaliv TEST · Nest Hub**, så de to apps kan kendes fra hinanden.
 
 I testappen: åbn chatmenuen → **Nest Hub-spejling**. Indtast `http://X.X.X.X:8765` (riggens faktiske LAN-IP), og indsæt samme spejlingsnøgle fra PowerShell. Aktivér og gem.
 
-**4. Kontroller forbindelsen i appen.**
+**5. Kontroller forbindelsen i appen.**
 
 Tryk **Test** i Nest Hub-indstillingerne. `HTTP 202` betyder kun, at riggen har lagt beskeden i kø; det beviser **ikke**, at Nest Hub viste den. Kontrollér både `Cast display acknowledgement received` i riggens konsol og teksten `KalivHub: forbindelsestest` på Nest Hub.
 
