@@ -15,6 +15,7 @@ import json
 import os
 import queue
 import re
+import socket
 import threading
 import time
 import uuid
@@ -40,6 +41,16 @@ def private_lan_ipv4(address: str) -> bool:
         return any(ip in network for network in allowed)
     except (ipaddress.AddressValueError, ValueError):
         return False
+
+
+def auto_lan_bind(cast_host: str) -> str:
+    """Choose the rig's egress interface for Cast without sending any packet."""
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+        sock.connect((cast_host, 9))  # UDP connect sets route; sends no datagram.
+        selected = sock.getsockname()[0]
+    if not private_lan_ipv4(selected):
+        raise ValueError("No private LAN source IP was selected for the Cast host")
+    return selected
 
 
 def utf16_units(value: str) -> int:
@@ -282,20 +293,29 @@ def main():
     parser.add_argument("--cast-host", required=True, help="Private IPv4 address of Nest Hub")
     parser.add_argument("--app-id", default="E975D483")
     parser.add_argument("--bind", default="127.0.0.1", help="Exact local interface, never 0.0.0.0")
+    parser.add_argument("--auto-bind", action="store_true", help="Resolve the private interface used to reach the Cast device; requires --allow-lan")
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--allow-lan", action="store_true", help="Explicitly permit binding private LAN interface")
     parser.add_argument("--secret-env", default="KALIVHUB_MIRROR_SECRET")
     args = parser.parse_args()
     if not private_lan_ipv4(args.cast_host):
         parser.error("--cast-host must be a private LAN IPv4 literal")
-    if args.bind != "127.0.0.1" and not (args.allow_lan and private_lan_ipv4(args.bind)):
+    if args.auto_bind and args.bind != "127.0.0.1":
+        parser.error("--auto-bind and explicit --bind are mutually exclusive")
+    if args.auto_bind and not args.allow_lan:
+        parser.error("--auto-bind requires --allow-lan")
+    try:
+        bind_address = auto_lan_bind(args.cast_host) if args.auto_bind else args.bind
+    except (OSError, ValueError) as exc:
+        parser.error("Cannot resolve a safe private LAN bind address: " + str(exc))
+    if bind_address != "127.0.0.1" and not (args.allow_lan and private_lan_ipv4(bind_address)):
         parser.error("LAN bind requires --allow-lan and an exact private IPv4 address")
     if not 0 < args.port < 65536:
         parser.error("--port out of range")
     secret = os.environ.get(args.secret_env, "")
     if len(secret) < 32:
         parser.error(f"Set {args.secret_env} to a random secret of at least 32 characters")
-    serve(args.cast_host, args.app_id, args.bind, args.port, secret)
+    serve(args.cast_host, args.app_id, bind_address, args.port, secret)
 
 
 if __name__ == "__main__":
