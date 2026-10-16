@@ -25,6 +25,8 @@ NAMESPACE = "urn:x-cast:com.kalivhub.micprobe"
 MAX_BODY = 8192
 MAX_DISPLAY_UNITS = 2000
 SKEW_SECONDS = 60
+MAX_CONNECTIONS = 24
+READ_TIMEOUT_SECONDS = 5
 SUPPORTED_KEYS = frozenset(("version", "type", "event_id", "text"))
 
 
@@ -128,6 +130,10 @@ def build_handler(protocol: MirrorProtocol):
     class Handler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.0"
 
+        def setup(self):
+            super().setup()
+            self.connection.settimeout(READ_TIMEOUT_SECONDS)
+
         def respond(self, code: int, status: str) -> None:
             body = json.dumps({"status": status}).encode("utf-8")
             self.send_response(code)
@@ -156,7 +162,12 @@ def build_handler(protocol: MirrorProtocol):
                 or self.headers.get("Transfer-Encoding")
             ):
                 return self.respond(413, "invalid_request")
-            raw = self.rfile.read(int(length))
+            try:
+                raw = self.rfile.read(int(length))
+            except (OSError, TimeoutError):
+                return self.respond(408, "request_timeout")
+            if len(raw) != int(length):
+                return self.respond(400, "short_body")
             code, status = protocol.accept(
                 raw,
                 self.headers.get("X-Kaliv-Timestamp", ""),
@@ -170,6 +181,33 @@ def build_handler(protocol: MirrorProtocol):
 
     return Handler
 
+
+
+class BoundedHttpServer(ThreadingHTTPServer):
+    """Bound simultaneous request threads; reject unauthenticated slow clients."""
+
+    daemon_threads = True
+    request_queue_size = 16
+
+    def __init__(self, address, handler):
+        self._slots = threading.BoundedSemaphore(MAX_CONNECTIONS)
+        super().__init__(address, handler)
+
+    def process_request(self, request, client_address):
+        if not self._slots.acquire(blocking=False):
+            self.shutdown_request(request)
+            return
+        try:
+            super().process_request(request, client_address)
+        except BaseException:
+            self._slots.release()
+            raise
+
+    def process_request_thread(self, request, client_address):
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            self._slots.release()
 
 class CastSender:
     """Single worker owns the Cast connection and sends messages in order."""
@@ -275,8 +313,8 @@ def serve(cast_host: str, app_id: str, bind: str, port: int, secret: str):
             finally:
                 pending.task_done()
 
-    ThreadingHTTPServer.allow_reuse_address = True
-    server = ThreadingHTTPServer((bind, port), build_handler(protocol))
+    BoundedHttpServer.allow_reuse_address = True
+    server = BoundedHttpServer((bind, port), build_handler(protocol))
     threading.Thread(target=worker, name="kalivhub-cast", daemon=True).start()
     print(f"KalivHub mirror listening on {bind}:{port} (Cast {cast_host}); opt-in only", flush=True)
     try:
