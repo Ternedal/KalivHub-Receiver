@@ -436,8 +436,11 @@ class CastSender:
                 self.send({"type": "SET_STATE", "state": "thinking"})
                 # Connecting a sleeping Nest Hub may be slower than the TTL.
                 # Never display old replies after a stalled Cast launch.
-                if expires_at is not None and time.monotonic() >= expires_at:
-                    raise ExpiredReply("Display event expired while connecting to Cast")
+                # Reserve the full SHOW_MESSAGE ACK window. A message that
+                # would almost certainly complete after the 30-second display
+                # deadline is safer dropped than shown late.
+                if expires_at is not None and time.monotonic() + 6 >= expires_at:
+                    raise ExpiredReply("Display event too close to expiry for Cast ACK")
                 display_attempted = True
                 self.send({"type": "SHOW_MESSAGE", "text": text})
                 # The reply is already acknowledged as displayed. A failed IDLE
