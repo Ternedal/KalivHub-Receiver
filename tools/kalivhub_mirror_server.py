@@ -182,6 +182,15 @@ def build_handler(protocol: MirrorProtocol):
         def do_POST(self):
             if self.path != "/v1/events":
                 return self.respond(404, "not_found")
+            # Reject ambiguous framing or authentication. BaseHTTPRequestHandler
+            # otherwise exposes the first value of duplicate headers, and
+            # proxies/clients can disagree about which one is authoritative.
+            for name in ("Content-Length", "Content-Type",
+                         "X-Kaliv-Timestamp", "X-Kaliv-Signature"):
+                if len(self.headers.get_all(name, [])) != 1:
+                    return self.respond(400, "invalid_headers")
+            if self.headers.get_all("Transfer-Encoding", []):
+                return self.respond(400, "invalid_headers")
             length = self.headers.get("Content-Length", "")
             ctype = self.headers.get("Content-Type", "").split(";", 1)[0].strip().lower()
             if (
@@ -189,7 +198,6 @@ def build_handler(protocol: MirrorProtocol):
                 or int(length) <= 0
                 or int(length) > MAX_BODY
                 or ctype != "application/json"
-                or self.headers.get("Transfer-Encoding")
             ):
                 return self.respond(413, "invalid_request")
             try:
