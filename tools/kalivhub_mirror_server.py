@@ -60,6 +60,16 @@ def auto_lan_bind(cast_host: str) -> str:
     return selected
 
 
+def reject_duplicate_json_keys(pairs):
+    """Reject ambiguous signed JSON objects before accepting display text."""
+    obj = {}
+    for name, value in pairs:
+        if name in obj:
+            raise ValueError("duplicate JSON member")
+        obj[name] = value
+    return obj
+
+
 def utf16_units(value: str) -> int:
     return len(value.encode("utf-16-le")) // 2
 
@@ -115,8 +125,9 @@ class MirrorProtocol:
         if not hmac.compare_digest(expected, signature):
             return 401, "unauthorized"
         try:
-            obj = json.loads(raw.decode("utf-8"))
-        except (UnicodeDecodeError, json.JSONDecodeError):
+            obj = json.loads(raw.decode("utf-8"),
+                             object_pairs_hook=reject_duplicate_json_keys)
+        except (UnicodeDecodeError, ValueError, RecursionError):
             return 400, "invalid_json"
         if not isinstance(obj, dict) or obj.keys() != SUPPORTED_KEYS:
             return 400, "invalid_schema"
@@ -194,7 +205,7 @@ def build_handler(protocol: MirrorProtocol):
             length = self.headers.get("Content-Length", "")
             ctype = self.headers.get("Content-Type", "").split(";", 1)[0].strip().lower()
             if (
-                not length.isdecimal()
+                not re.fullmatch(r"[0-9]{1,5}", length)
                 or int(length) <= 0
                 or int(length) > MAX_BODY
                 or ctype != "application/json"
