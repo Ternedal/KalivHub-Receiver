@@ -77,28 +77,32 @@ try {
     receiver=window.cast.framework.CastReceiverContext.getInstance();
     receiver.addCustomMessageListener(NS,event=>{
       const type=event?.data?.type;
+      // Optional ID echoes allow new senders to associate each ACK with the
+      // exact command. Legacy senders omit the ID and continue to work.
+      const requestId=event?.data?.request_id;
+      const ack=(kind,data={})=>report(kind,typeof requestId==='string'&&/^[a-f0-9]{32}$/.test(requestId)?{...data,request_id:requestId}:data);
       if(type==='SET_STATE'){
         const states={idle:'Kaliv er klar',thinking:'Kaliv tænker…',speaking:'Kaliv taler…',listening:'Kaliv lytter…',offline:'Kaliv er offline'};
         const state=event?.data?.state;
-        if(typeof state!=='string'||!Object.prototype.hasOwnProperty.call(states,state)){report('KALIV_STATE',{result:'invalid'});return}
+        if(typeof state!=='string'||!Object.prototype.hasOwnProperty.call(states,state)){ack('KALIV_STATE',{result:'invalid'});return}
         $('kaliv-state').textContent=states[state];
-        report('KALIV_STATE',{result:'updated',state});
+        ack('KALIV_STATE',{result:'updated',state});
       }
       else if(type==='SHOW_DIAGNOSTICS'){
         $('diagnostics').classList.toggle('visible',event?.data?.visible===true);
-        report('KALIV_DIAGNOSTICS',{result:'updated'});
+        ack('KALIV_DIAGNOSTICS',{result:'updated'});
       }
       else if(type==='SHOW_MESSAGE'){
         const message=event?.data?.text;
-        if(typeof message!=='string'||message.length>2000){report('KALIV_DISPLAY',{result:'invalid'});return}
+        if(typeof message!=='string'||message.length>2000){ack('KALIV_DISPLAY',{result:'invalid'});return}
         $('kaliv-message').textContent=message;
         $('kaliv-state').textContent='Kaliv · besked modtaget';
-        report('KALIV_DISPLAY',{result:'shown',length:message.length});
+        ack('KALIV_DISPLAY',{result:'shown',length:message.length});
       }
       else if(type==='CLEAR_MESSAGE'){
         $('kaliv-message').textContent='Venter på besked fra riggen…';
         $('kaliv-state').textContent='Kaliv er klar';
-        report('KALIV_DISPLAY',{result:'cleared'});
+        ack('KALIV_DISPLAY',{result:'cleared'});
       }
       else if(type==='PROBE_CONSTRAINTS'){
         const media=navigator.mediaDevices;
