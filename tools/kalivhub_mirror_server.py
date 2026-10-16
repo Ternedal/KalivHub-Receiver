@@ -243,6 +243,7 @@ class CastSender:
         self.cast = None
         self.controller = None
         self.acks: queue.Queue = queue.Queue(maxsize=64)
+        self.correlated_acks = False
 
     def connect(self):
         import pychromecast
@@ -318,12 +319,21 @@ class CastSender:
                 return True
         else:
             raise ValueError("Unsupported Cast display command")
-        self.controller.send_message(payload)
+        # The deployed legacy receiver does not echo command IDs. The new
+        # receiver does; once observed, never downgrade the process back to
+        # accepting ambiguous legacy ACKs.
+        request_id = uuid.uuid4().hex
+        self.controller.send_message({**payload, "request_id": request_id})
         deadline = time.monotonic() + 6
         while time.monotonic() < deadline:
             try:
                 ack = self.acks.get(timeout=min(0.25, max(0.01, deadline - time.monotonic())))
             except queue.Empty:
+                continue
+            ack_id = ack.get("request_id")
+            if ack_id is not None:
+                self.correlated_acks = True
+            if self.correlated_acks and ack_id != request_id:
                 continue
             if (ack.get("type") == expected_type
                     and ack.get("result") == expected_result and matching(ack)):
