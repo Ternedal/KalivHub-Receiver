@@ -431,6 +431,37 @@ class ProtocolTests(unittest.TestCase):
         sender.send({"type": "SET_STATE", "state": "idle"})
         self.assertNotEqual(ids[0], ids[1])
 
+    def test_explicit_strict_ack_mode_requires_matching_ids(self):
+        sender = CastSender(
+            "192.168.1.13", "E975D483", require_correlated_acks=True
+        )
+        sender.connect = lambda: None
+        def inbound(payload):
+            sender.acks.put({
+                "type": "KALIV_STATE",
+                "result": "updated",
+                "state": payload["state"],
+            })
+            sender.acks.put({
+                "type": "KALIV_STATE",
+                "result": "updated",
+                "state": payload["state"],
+                "request_id": payload["request_id"],
+            })
+        sender.controller = SimpleNamespace(send_message=inbound)
+        sender.send({"type": "SET_STATE", "state": "thinking"})
+        self.assertTrue(sender.acks.empty())
+        self.assertTrue(sender.correlated_acks)
+
+    def test_strict_mode_remains_enabled_after_disconnect(self):
+        sender = CastSender(
+            "192.168.1.13", "E975D483", require_correlated_acks=True
+        )
+        sender.correlated_acks = True
+        sender.disconnect()
+        self.assertTrue(sender.require_correlated_acks)
+        self.assertFalse(sender.correlated_acks)
+
     def test_correlated_receiver_never_downgrades_to_legacy_ack(self):
         sender = CastSender("192.168.1.13", "E975D483")
         sender.connect = lambda: None
