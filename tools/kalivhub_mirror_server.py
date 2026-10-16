@@ -301,23 +301,38 @@ class CastSender:
                 self.acks.get_nowait()
             except queue.Empty:
                 break
+        # Validate the command before sending. Clear-message ACKs differ from
+        # show-message ACKs even though they share the KALIV_DISPLAY channel.
+        command = payload.get("type")
+        if command == "SHOW_MESSAGE":
+            expected_type, expected_result = "KALIV_DISPLAY", "shown"
+            def matching(ack):
+                return ack.get("length") == utf16_units(payload["text"])
+        elif command == "SET_STATE":
+            expected_type, expected_result = "KALIV_STATE", "updated"
+            def matching(ack):
+                return ack.get("state") == payload["state"]
+        elif command == "CLEAR_MESSAGE":
+            expected_type, expected_result = "KALIV_DISPLAY", "cleared"
+            def matching(ack):
+                return True
+        else:
+            raise ValueError("Unsupported Cast display command")
         self.controller.send_message(payload)
-        expected = "KALIV_DISPLAY" if payload["type"] == "SHOW_MESSAGE" else "KALIV_STATE"
         deadline = time.monotonic() + 6
         while time.monotonic() < deadline:
             try:
                 ack = self.acks.get(timeout=min(0.25, max(0.01, deadline - time.monotonic())))
             except queue.Empty:
                 continue
-            if ack.get("type") != expected:
-                continue
-            if expected == "KALIV_DISPLAY" and ack.get("length") != utf16_units(payload["text"]):
-                continue
-            if expected == "KALIV_STATE" and ack.get("state") != payload["state"]:
-                continue
-            if ack.get("result") in ("shown", "updated"):
+            if (ack.get("type") == expected_type
+                    and ack.get("result") == expected_result and matching(ack)):
                 return
         raise TimeoutError("Cast acknowledgement missing")
+
+    def clear_message(self) -> None:
+        """Use the receiver's existing CLEAR_MESSAGE command and require ACK."""
+        self.send({"type": "CLEAR_MESSAGE"})
 
     def show_answer(self, text: str, expires_at: float | None = None):
         for attempt in range(2):
@@ -375,17 +390,36 @@ def post_signed_selftest(bind: str, port: int, secret: str) -> int:
 
 
 def serve(cast_host: str, app_id: str, bind: str, port: int, secret: str,
-          startup_test: bool = False):
+          startup_test: bool = False, clear_after_seconds: int = 0):
     pending: queue.Queue = queue.Queue(maxsize=16)
     protocol = MirrorProtocol(secret, pending)
     sender = CastSender(cast_host, app_id)
 
     def worker():
+        clear_at = None
         while True:
-            answer = pending.get()
+            # A clear timer is strictly optional (default off). Re-use the
+            # existing single Cast worker so a delayed clear cannot race with
+            # a newer answer and erase it.
+            wait = None if clear_at is None else max(0.0, clear_at - time.monotonic())
+            try:
+                answer = pending.get(timeout=wait) if wait is not None else pending.get()
+            except queue.Empty:
+                if clear_at is not None:
+                    try:
+                        sender.clear_message()
+                        print("Expired display cleared on Cast", flush=True)
+                    except Exception as exc:
+                        sender.disconnect()
+                        print("Cast display clear failed:", type(exc).__name__, flush=True)
+                    finally:
+                        clear_at = None
+                continue
             try:
                 if deliver_pending(sender, answer):
                     print("Cast display acknowledgement received", flush=True)
+                    clear_at = (time.monotonic() + clear_after_seconds
+                                if clear_after_seconds else None)
                 else:
                     print("Expired Cast display event discarded", flush=True)
             except ExpiredReply:
@@ -435,6 +469,8 @@ def main():
     parser.add_argument("--secret-env", default="KALIVHUB_MIRROR_SECRET")
     parser.add_argument("--startup-test", action="store_true",
                         help="Explicitly queue one signed HTTP test reply for physical Cast verification")
+    parser.add_argument("--clear-after", type=int, default=0, metavar="SECONDS",
+                        help="Optional time to clear a displayed reply; 0 disables (default)")
     args = parser.parse_args()
     if not private_lan_ipv4(args.cast_host):
         parser.error("--cast-host must be a private LAN IPv4 literal")
@@ -453,8 +489,10 @@ def main():
     secret = os.environ.get(args.secret_env, "")
     if len(secret) < 32:
         parser.error(f"Set {args.secret_env} to a random secret of at least 32 characters")
+    if not 0 <= args.clear_after <= 3600:
+        parser.error("--clear-after must be between 0 and 3600 seconds")
     serve(args.cast_host, args.app_id, bind_address, args.port, secret,
-          startup_test=args.startup_test)
+          startup_test=args.startup_test, clear_after_seconds=args.clear_after)
 
 
 if __name__ == "__main__":
