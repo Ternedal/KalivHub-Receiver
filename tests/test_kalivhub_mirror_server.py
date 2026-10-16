@@ -10,13 +10,13 @@ import threading
 import time
 import unittest
 import uuid
-from http.server import ThreadingHTTPServer
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 from kalivhub_mirror_server import (
-    CastSender, MAX_DISPLAY_UNITS, MirrorProtocol, auto_lan_bind, build_handler,
+    BoundedHttpServer, CastSender, MAX_CONNECTIONS, MAX_DISPLAY_UNITS, MirrorProtocol,
+    auto_lan_bind, build_handler,
     private_lan_ipv4, utf16_units,
 )
 
@@ -176,7 +176,7 @@ class ProtocolTests(unittest.TestCase):
 class HttpTests(unittest.TestCase):
     def setUp(self):
         self.events = queue.Queue(maxsize=4)
-        self.server = ThreadingHTTPServer(
+        self.server = BoundedHttpServer(
             ("127.0.0.1", 0),
             build_handler(MirrorProtocol(SECRET, self.events)),
         )
@@ -196,6 +196,20 @@ class HttpTests(unittest.TestCase):
             return response.status, response.read()
         finally:
             client.close()
+
+    def test_connection_limit_rejects_slow_clients_without_spawning_threads(self):
+        acquired = 0
+        try:
+            while self.server._slots.acquire(blocking=False):
+                acquired += 1
+            self.assertEqual(acquired, MAX_CONNECTIONS)
+            stale_socket = Mock()
+            with patch.object(self.server, "shutdown_request") as close:
+                self.server.process_request(stale_socket, ("127.0.0.1", 5555))
+                close.assert_called_once_with(stale_socket)
+        finally:
+            for _ in range(acquired):
+                self.server._slots.release()
 
     def test_health_does_not_claim_cast_ready(self):
         code, payload = self.request("GET", "/healthz")
