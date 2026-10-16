@@ -42,10 +42,19 @@ if ([IO.File]::Exists($keyFile)) {
         [Security.Cryptography.DataProtectionScope]::CurrentUser
     )
     # Never write the secret in plaintext to disk; fail if storage fails.
-    $temporary = "$keyFile.tmp"
+    # A unique staging name avoids two simultaneous startups overwriting
+    # each other's DPAPI ciphertext before the atomic move.
+    $temporary = "$keyFile.$([Guid]::NewGuid().ToString('N')).tmp"
     try {
         [IO.File]::WriteAllBytes($temporary, $protected)
-        [IO.File]::Move($temporary, $keyFile)
+        try {
+            [IO.File]::Move($temporary, $keyFile)
+        } catch [IO.IOException] {
+            if ([IO.File]::Exists($keyFile)) {
+                throw 'Another KalivHub process created the mirror key. Restart this launcher; never use an unpersisted pairing secret.'
+            }
+            throw
+        }
     } finally {
         if ([IO.File]::Exists($temporary)) {
             [IO.File]::Delete($temporary)
