@@ -277,6 +277,62 @@ class ProtocolTests(unittest.TestCase):
                                 "SHOW_MESSAGE", "SET_STATE"])
         self.assertEqual(disconnected, [True])
 
+    def test_clear_display_uses_existing_receiver_ack(self):
+        sender = CastSender("192.168.1.13", "E975D483")
+        sender.connect = lambda: None
+        observed = []
+        def receive(payload):
+            observed.append(payload)
+            sender.acks.put({
+                "type": "KALIV_DISPLAY", "result": "cleared",
+            })
+        sender.controller = SimpleNamespace(send_message=receive)
+        sender.clear_message()
+        self.assertEqual(observed, [{"type": "CLEAR_MESSAGE"}])
+
+    def test_wrong_ack_result_cannot_complete_other_display_command(self):
+        sender = CastSender("192.168.1.13", "E975D483")
+        sender.connect = lambda: None
+        def receive(payload):
+            # Length alone is not enough: a stale CLEARED result is not SHOWN.
+            sender.acks.put({
+                "type": "KALIV_DISPLAY", "result": "cleared", "length": 4,
+            })
+            sender.acks.put({
+                "type": "KALIV_DISPLAY", "result": "updated", "length": 4,
+            })
+            sender.acks.put({
+                "type": "KALIV_DISPLAY", "result": "shown", "length": 4,
+            })
+        sender.controller = SimpleNamespace(send_message=receive)
+        sender.send({"type": "SHOW_MESSAGE", "text": "Hej!"})
+        self.assertTrue(sender.acks.empty())
+
+    def test_wrong_state_ack_result_cannot_satisfy_cast_command(self):
+        sender = CastSender("192.168.1.13", "E975D483")
+        sender.connect = lambda: None
+        def receive(payload):
+            sender.acks.put({
+                "type": "KALIV_STATE", "state": "thinking", "result": "shown",
+            })
+            sender.acks.put({
+                "type": "KALIV_STATE", "state": "thinking", "result": "updated",
+            })
+        sender.controller = SimpleNamespace(send_message=receive)
+        sender.send({"type": "SET_STATE", "state": "thinking"})
+        self.assertTrue(sender.acks.empty())
+
+    def test_unknown_display_command_is_rejected_before_send(self):
+        sender = CastSender("192.168.1.13", "E975D483")
+        sender.connect = lambda: None
+        calls = []
+        sender.controller = SimpleNamespace(
+            send_message=lambda payload: calls.append(payload)
+        )
+        with self.assertRaises(ValueError):
+            sender.send({"type": "DELETE_ALL_MESSAGES"})
+        self.assertEqual(calls, [])
+
     def test_cast_ack_type_and_display_length_are_checked(self):
         sender = CastSender("192.168.1.13", "E975D483")
         sender.connect = lambda: None
