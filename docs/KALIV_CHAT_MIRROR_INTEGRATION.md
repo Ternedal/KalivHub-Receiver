@@ -25,10 +25,12 @@ git pull --ff-only
 **2. Start lokal modtager med én kommando.**
 
 ```powershell
-pwsh -NoProfile -File .\tools\start-kalivhub-mirror.ps1 -ShowSecret
+pwsh -NoProfile -File .\tools\start-kalivhub-mirror.ps1 -ShowSecret -SelfTest
 ```
 
 Windows-starteren opretter en separat tilfældig 256-bit HMAC-nøgle første gang og gemmer den krypteret via Windows DPAPI (`CurrentUser`) på `%LOCALAPPDATA%\KalivHub\mirror-secret.dpapi`. Senere genstarter som **samme Windows-bruger** anvender den samme nøgle. Den kan vises lokalt med `-ShowSecret`, men må aldrig kopieres ind i GitHub, chat eller logs.
+
+Med `-SelfTest` sender starteren én HMAC-signeret HTTP-testbesked via riggens faktiske lokale endpoint. Kig efter `Startup HTTP self-test queued` og derefter `Cast display acknowledgement received`. Kontrollér samtidig teksten **KalivHub: forbindelsestest fra riggen** på Nest Hub. En HTTP 202-kvittering alene beviser ikke skærmvisning; den fysiske kvittering kommer separat. `-SelfTest` er frivillig og sender intet uden flaget.
 
 Starteren finder selv den lokale IP-adresse, som riggen ville bruge til at nå Nest Hub på `192.168.1.13`; IP-valget udsender **ingen** UDP-datapakke. Den åbner kun denne specifikke private IPv4-adresse på TCP-port `8765`. Den opretter **ingen** Windows-firewallregel og ændrer ikke riggens ModelRig-worker, Ollama eller produktionsservices.
 
