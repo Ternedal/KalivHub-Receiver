@@ -6,6 +6,7 @@ param(
     [string]$CastHost = '192.168.1.13',
     [ValidateRange(1, 65535)][int]$Port = 8765,
     [switch]$ShowSecret,
+    [switch]$SelfTest,
     [switch]$VerifyKeyOnly
 )
 
@@ -87,9 +88,14 @@ Write-Host '  Nest Hub:' $CastHost
 Write-Host '  Port:' $Port
 Write-Host '  Den lokale LAN-adresse vælges automatisk. Stop med Ctrl+C.'
 Write-Host '  OBS: Brug kun betroet netværk. HTTP krypterer IKKE indholdet.'
+if ($SelfTest) {
+    Write-Host '  Én signeret testbesked sendes gennem riggens HTTP-server til Nest Hub.'
+}
 $env:KALIVHUB_MIRROR_SECRET = $secret
 try {
-    & py $serverPath --cast-host $CastHost --auto-bind --allow-lan --port $Port
+    $serverArgs = @($serverPath, '--cast-host', $CastHost, '--auto-bind', '--allow-lan', '--port', $Port)
+    if ($SelfTest) { $serverArgs += '--startup-test' }
+    & py @serverArgs
     if ($LASTEXITCODE -ne 0) {
         throw "KalivHub mirror server failed with exit code $LASTEXITCODE"
     }
