@@ -167,6 +167,25 @@ class MirrorProtocol:
         return 202, "accepted"
 
 
+def read_signed_body(reader, connection, byte_count: int, timeout_seconds: float,
+                     clock=time.monotonic) -> bytes:
+    """Read one complete bounded payload within one absolute clock deadline."""
+    deadline = clock() + timeout_seconds
+    remaining = byte_count
+    pieces = []
+    while remaining:
+        seconds = deadline - clock()
+        if seconds <= 0:
+            raise TimeoutError("request body deadline expired")
+        connection.settimeout(seconds)
+        part = reader.read1(min(remaining, 4096))
+        if not part:
+            raise EOFError("short request body")
+        pieces.append(part)
+        remaining -= len(part)
+    return b"".join(pieces)
+
+
 def build_handler(protocol: MirrorProtocol):
     class Handler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.0"
@@ -211,26 +230,15 @@ def build_handler(protocol: MirrorProtocol):
                 or ctype != "application/json"
             ):
                 return self.respond(413, "invalid_request")
-            # A per-recv socket timeout is NOT an absolute deadline: a
-            # malicious slow client could trickle bytes just below the timeout
-            # forever. Bound total body read time independently of pacing.
-            deadline = time.monotonic() + READ_TIMEOUT_SECONDS
-            remaining_bytes = int(length)
-            chunks = []
+            # Whole-body deadline, not an inactivity timeout. Slow trickle
+            # clients cannot occupy authenticated HTTP threads indefinitely.
             try:
-                while remaining_bytes:
-                    remaining_time = deadline - time.monotonic()
-                    if remaining_time <= 0:
-                        return self.respond(408, "request_timeout")
-                    self.connection.settimeout(remaining_time)
-                    chunk = self.rfile.read1(min(remaining_bytes, 4096))
-                    if not chunk:
-                        return self.respond(400, "short_body")
-                    chunks.append(chunk)
-                    remaining_bytes -= len(chunk)
+                raw = read_signed_body(self.rfile, self.connection,
+                                       int(length), READ_TIMEOUT_SECONDS)
+            except EOFError:
+                return self.respond(400, "short_body")
             except (OSError, TimeoutError):
                 return self.respond(408, "request_timeout")
-            raw = b"".join(chunks)
             code, status = protocol.accept(
                 raw,
                 self.headers.get("X-Kaliv-Timestamp", ""),
