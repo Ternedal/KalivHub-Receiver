@@ -4,7 +4,7 @@
 
 **Verificeret fysisk:** Google Nest Hub 2 modtog `SHOW_MESSAGE` og `SET_STATE` fra ModelRig; to sammenhængende chatbeskeder og samtalekontekst virkede. Mikrofonadgang via Cast Web Receiver gav `NotFoundError` og bruges **ikke** til automatisk spejling.
 
-**Implementeret og CI-testet, men endnu ikke fysisk valideret:** Android sender færdige assistentsvar som autentificerede, afgrænsede events til riggens lokale KalivHub-modtager. Modtageren spejler beskederne på Nest Hub uden et ekstra modelkald.
+**Implementeret og offline-testet på tidligere commits, men nyeste sikkerhedsrettelser afventer CI og fysisk validering:** Android sender færdige assistentsvar som autentificerede, afgrænsede events til riggens lokale KalivHub-modtager. Modtageren spejler beskederne på Nest Hub uden et ekstra modelkald.
 
 - [Kaliv Android draft-PR #2206](https://github.com/Ternedal/ModelRig/pull/2206) – branch `feature/kalivhub-android-mirror-optin-20261015`.
 - [KalivHub Receiver draft-PR #3](https://github.com/Ternedal/KalivHub-Receiver/pull/3) – branch `test/nest-hub-microphone-probe`.
@@ -70,10 +70,10 @@ Send derefter to normale chatbeskeder, og prøv gerne cloud, retry og færdig st
 - Spejlingen er **slået fra som standard** og kan altid deaktiveres i Android.
 - Android sender kun færdig assistenttekst; **ikke** brugerspørgsmål, chat-historik, ModelRig-bearertoken eller cloud-API-nøgler. Spejl ikke følsomme svar på delt skærm.
 - HMAC-SHA256 autentificerer rå JSON-bytes og Unix-timestamp; der er begrænset tidsvindue, replay-cache, tekstgrænse (2.000 UTF-16-enheder), HTTP-body (16 KiB), op til 16 køede events og begrænset antal HTTP-forbindelser. Både Androids og riggens ventende svar bliver kasseret efter 30 sekunder. Riggen kontrollerer også udløb efter Cast-opstart og inden visning.
-- Trafikken er **HTTP og ukrypteret** på lokalnettet. Signaturen beskytter ikke svarindhold mod aflæsning på netværket. Brug kun betroet LAN, ellers en korrekt HTTPS/VPN-løsning.
+- Trafikken er **HTTP og ukrypteret** på lokalnettet. Signaturen beskytter ikke svarindhold mod aflæsning på netværket. Android spejler nu med `Proxy.NO_PROXY`, så en eventuel systemproxy på telefonen ikke bruges til at videresende lokale svar. Det krypterer **stadig ikke** dataene; brug kun et betroet LAN, ellers en korrekt HTTPS/VPN-løsning.
 - En udløbet besked stoppes inden skærmvisning; hvis receiveren allerede havde fået `thinking`, forsøger broen at nulstille status til `idle` inden frakobling. Det er best effort, og en utilgængelig Cast-enhed kan ikke garanteres nulstillet.
 - `GET /healthz` kontrollerer kun, at HTTP-modtageren kører, **ikke** Cast-status.
-- `401`: HMAC eller ur passer ikke. `409`: event-ID er allerede modtaget. `503`: køen eller replay-cache er fuld. `408`: langsom/uafsluttet HTTP-body.
+- `401`: HMAC eller ur passer ikke. `409`: event-ID er allerede modtaget. `503`: køen eller replay-cache er fuld. `408`: HTTP-body blev ikke modtaget inden den samlede tidsfrist på 5 sekunder. `400`: tvetydige headers, dublerede JSON-felter eller andet ugyldigt input. `413`: ugyldig eller for stor `Content-Length`.
 - Hvis DPAPI-nøglen ikke kan dekrypteres, fejler starteren bevidst frem for stille at generere en ny. Re-pair Android efter en bevidst nøglerotation.
 - Lokal Python-kontrakttest: `py -m unittest discover -s tests -p test_kalivhub_mirror_server.py -v`.
 - Ingen merge eller produktion før komplet CI og fysisk test gennem **Android → rig → Cast → Nest Hub**.
