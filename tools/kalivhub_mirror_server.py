@@ -104,6 +104,11 @@ class MirrorProtocol:
             return 401, "unauthorized"
         if abs(int(timestamp) - current) > SKEW_SECONDS:
             return 401, "unauthorized"
+        # compare_digest(str, str) raises TypeError for non-ASCII input.
+        # Untrusted HTTP headers must never terminate a request worker.
+        if (not isinstance(signature, str)
+                or not re.fullmatch(r"v1=[0-9a-f]{64}", signature)):
+            return 401, "unauthorized"
         expected = "v1=" + hmac.new(
             self.secret, timestamp.encode("ascii") + b"\n" + raw, hashlib.sha256
         ).hexdigest()
