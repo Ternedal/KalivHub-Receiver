@@ -18,7 +18,7 @@ from kalivhub_mirror_server import (
     BoundedHttpServer, CastSender, ExpiredReply, MAX_BODY, MAX_CONNECTIONS, MAX_DISPLAY_UNITS,
     MAX_PENDING_SECONDS, MirrorProtocol, PendingReply, deliver_pending,
     auto_lan_bind, build_handler, display_worker, post_signed_selftest,
-    private_lan_ipv4, read_signed_body, utf16_units,
+    private_lan_ipv4, read_signed_body, utf16_units, NAMESPACE,
 )
 
 SECRET = "s" * 40
@@ -1049,6 +1049,44 @@ class HttpTests(unittest.TestCase):
         self.assertEqual(self.request("POST", "/v1/events", body,
                          {"Content-Type": "application/json"})[0], 400)
         self.assertEqual(self.request("POST", "/other", body)[0], 404)
+
+
+class ReceiverSourceInteropTests(unittest.TestCase):
+    """Prevent Python Cast sender and the *actual* custom receiver drifting.
+
+    The dashboard index.html uses a separate home-automation namespace; the
+    display bridge must target mic-diagnostic.html (Cast app E975D483).
+    All checks are read-only and work without Android, a rig or a Nest Hub.
+    """
+
+    def test_sender_namespace_matches_isolated_display_receiver(self):
+        receiver_path = Path(__file__).resolve().parents[1] / "mic-diagnostic.html"
+        receiver_js = receiver_path.read_text(encoding="utf-8")
+        self.assertIn("const NS='" + NAMESPACE + "'", receiver_js)
+        self.assertIn("receiver.addCustomMessageListener(NS,", receiver_js)
+        self.assertIn("const requestId=event?.data?.request_id", receiver_js)
+        self.assertIn("request_id:requestId", receiver_js)
+
+    def test_receiver_handles_all_sender_commands_with_expected_acks(self):
+        source = (Path(__file__).resolve().parents[1] / "mic-diagnostic.html"
+                  ).read_text(encoding="utf-8")
+        for part in (
+            "type==='SET_STATE'",
+            "ack('KALIV_STATE',{result:'updated',state})",
+            "type==='SHOW_MESSAGE'",
+            "ack('KALIV_DISPLAY',{result:'shown',length:message.length})",
+            "type==='CLEAR_MESSAGE'",
+            "ack('KALIV_DISPLAY',{result:'cleared'})",
+            "message.length>2000",
+        ):
+            with self.subTest(receiver_contract=part):
+                self.assertIn(part, source)
+
+    def test_dashboard_is_not_mistaken_for_mirror_receiver(self):
+        dashboard = (Path(__file__).resolve().parents[1] / "index.html"
+                     ).read_text(encoding="utf-8")
+        self.assertNotIn("const NS='" + NAMESPACE + "'", dashboard)
+        self.assertNotIn("type==='SHOW_MESSAGE'", dashboard)
 
 
 if __name__ == "__main__":
