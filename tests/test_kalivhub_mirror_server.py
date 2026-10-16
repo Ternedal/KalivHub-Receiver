@@ -16,7 +16,7 @@ from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 from kalivhub_mirror_server import (
-    CastSender, MAX_DISPLAY_UNITS, MirrorProtocol, build_handler,
+    CastSender, MAX_DISPLAY_UNITS, MirrorProtocol, auto_lan_bind, build_handler,
     private_lan_ipv4, utf16_units,
 )
 
@@ -94,6 +94,37 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(self.proto.accept(body2, ts2, sig2)[0], 503)
         self.queue.get_nowait()
         self.assertEqual(self.proto.accept(body2, ts2, sig2)[0], 202)
+
+    def test_auto_bind_selects_cast_route_without_transmitting(self):
+        selected = []
+        class Socket:
+            def __enter__(self):
+                return self
+            def __exit__(self, *args):
+                return False
+            def connect(self, target):
+                selected.append(target)
+            def getsockname(self):
+                return ("192.168.1.77", 54321)
+            def send(self, *args):
+                raise AssertionError("Auto-bind must not send datagrams")
+        with patch("kalivhub_mirror_server.socket.socket", return_value=Socket()):
+            self.assertEqual(auto_lan_bind("192.168.1.13"), "192.168.1.77")
+        self.assertEqual(selected, [("192.168.1.13", 9)])
+
+    def test_auto_bind_rejects_non_private_source(self):
+        class Socket:
+            def __enter__(self):
+                return self
+            def __exit__(self, *args):
+                return False
+            def connect(self, _target):
+                pass
+            def getsockname(self):
+                return ("127.0.0.1", 45678)
+        with patch("kalivhub_mirror_server.socket.socket", return_value=Socket()):
+            with self.assertRaises(ValueError):
+                auto_lan_bind("192.168.1.13")
 
     def test_private_ips_only(self):
         self.assertTrue(private_lan_ipv4("192.168.1.13"))
