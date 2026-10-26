@@ -18,8 +18,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
       - name: Validate receiver before deployment
-        run: node tests/receiver-static.cjs
+        # Deploy only what passes every receiver test. Main was red for 12 days
+        # while this step ran only the static check and Pages kept deploying.
+        run: |
+          node tests/receiver-syntax.cjs
+          node tests/receiver-static.cjs
+          node tests/receiver-behavior.cjs
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
