@@ -64,7 +64,7 @@ git pull --ff-only
 pwsh -NoProfile -File .\tools\test-kalivhub-readiness.ps1
 ```
 
-Denne kontrol er skrivebeskyttet: Den tjekker Python 3.11+, den installerede PyChromecast-controller, nødvendige filer, eksistensen af en krypteret parringnøgle og om TCP-port 8765 allerede er optaget. Nøglen læses eller vises ikke. Hvis PyChromecast mangler, kan afhængigheden installeres på riggen med `py -m pip install "pychromecast>=13,<15"` – kun når du er ved riggen og ønsker det.
+Denne kontrol er skrivebeskyttet: Den tjekker Python 3.11+, den installerede PyChromecast-controller, nødvendige filer, eksistensen af en krypteret parringnøgle og om TCP-port 8765 allerede er optaget. Kører VoiceRig på riggen, lytter den på `127.0.0.1:8765`, og så melder kontrollen en lytter. Det er forventet, fordi starteren binder spejlingen til LAN-IP'en, ikke til loopback. Nøglen læses eller vises ikke. Hvis PyChromecast mangler, kan afhængigheden installeres på riggen med `py -m pip install "pychromecast>=13,<15"` – kun når du er ved riggen og ønsker det.
 
 For frivilligt også at afprøve selve TCP-forbindelsen fra riggen til Nest Hub (port 8009) kan du bruge `-CheckCast`. Det beviser kun netværkskontakt, **ikke** at Cast-appen er startet, at beskeden vises eller at mikrofonen fungerer.
 
