@@ -876,6 +876,28 @@ class HttpTests(unittest.TestCase):
         finally:
             client.close()
 
+    def test_occupied_port_fails_at_startup_instead_of_sharing_it(self):
+        # VoiceRig's sidecar listens on 127.0.0.1:8765, the mirror's default
+        # port. On Windows SO_REUSEADDR alone would let the mirror bind on top
+        # of it and split connections; the bind must fail instead.
+        import socket
+        from http.server import BaseHTTPRequestHandler
+        occupant = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            occupant.bind(("127.0.0.1", 0))
+            occupant.listen(1)
+            port = occupant.getsockname()[1]
+            with patch.object(BoundedHttpServer, "allow_reuse_address", True):  # as serve() sets it
+                try:
+                    server = BoundedHttpServer(("127.0.0.1", port), BaseHTTPRequestHandler)
+                except OSError:
+                    pass
+                else:
+                    server.server_close()
+                    self.fail("mirror bound a port another process is listening on")
+        finally:
+            occupant.close()
+
     def test_connection_limit_rejects_slow_clients_without_spawning_threads(self):
         acquired = 0
         try:

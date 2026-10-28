@@ -277,6 +277,16 @@ class BoundedHttpServer(ThreadingHTTPServer):
         self._slots = threading.BoundedSemaphore(MAX_CONNECTIONS)
         super().__init__(address, handler)
 
+    def server_bind(self):
+        # On Windows SO_REUSEADDR lets a second socket bind an address that is
+        # already in use, e.g. VoiceRig's sidecar on 127.0.0.1:8765, the
+        # mirror's own default port. Claim the port exclusively instead, so a
+        # clash fails at startup rather than splitting connections silently.
+        if os.name == "nt" and hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
+            self.allow_reuse_address = False
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        super().server_bind()
+
     def process_request(self, request, client_address):
         if not self._slots.acquire(blocking=False):
             self.shutdown_request(request)
