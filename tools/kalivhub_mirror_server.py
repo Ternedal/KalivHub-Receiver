@@ -33,6 +33,12 @@ MAX_CONNECTIONS = 24
 READ_TIMEOUT_SECONDS = 5
 MAX_PENDING_SECONDS = 30
 SUPPORTED_KEYS = frozenset(("version", "type", "event_id", "text"))
+# protocol/kaliv-display-v1.json "states"; tests/test_kaliv_display_contract.py
+# keeps the two in step.
+DISPLAY_STATES = ("idle", "listening", "thinking", "speaking", "offline", "error")
+# After the first failure one immediate retry is free (show_answer's own retry);
+# from the second consecutive failure on, wait 2, 4, 8, 16, then 30 s at most.
+CONNECT_BACKOFF_CAP_SECONDS = 30.0
 
 
 def private_lan_ipv4(address: str) -> bool:
@@ -287,11 +293,27 @@ class BoundedHttpServer(ThreadingHTTPServer):
         finally:
             self._slots.release()
 
+class CastUnavailable(ConnectionError):
+    """No Cast attempt was made: the sender is backing off after failures."""
+
+
+class ReceiverGone(ConnectionError):
+    """The Kaliv receiver stopped between THINKING and the reply; nothing was shown."""
+
+
 class CastSender:
-    """Single worker owns the Cast connection and sends messages in order."""
+    """Single worker owns the Cast connection and sends messages in order.
+
+    Launch rule: only the start of a new reply (a SET_STATE other than idle)
+    may start the Kaliv receiver on the Hub. Returning to idle or clearing
+    never does: if the receiver is no longer running, nothing of ours is on
+    the screen. PyChromecast 14 would otherwise launch the receiver implicitly
+    on any send_message, which could take the Hub away from another app just
+    to clear a message that is no longer visible.
+    """
 
     def __init__(self, host: str, app_id: str,
-                 require_correlated_acks: bool = False):
+                 require_correlated_acks: bool = False, clock=None):
         self.host = host
         self.app_id = app_id
         self.require_correlated_acks = require_correlated_acks
@@ -299,15 +321,76 @@ class CastSender:
         self.controller = None
         self.acks: queue.Queue = queue.Queue(maxsize=64)
         self.correlated_acks = False
+        self.ack_timeout = 6.0
+        self.launch_settle_seconds = 3.0
+        self._clock = clock
+        self.failures = 0
+        self._retry_at = 0.0
+        self._session_had_receiver = False
+        # The state we want the Hub to show, and whether this receiver has
+        # acknowledged it. Unconfirmed after a lost SET_STATE; the next CLEAR
+        # re-sends it before clearing. SHOW_MESSAGE is never re-sent.
+        self.desired_state: str | None = None
+        self.state_confirmed = True
+        self.status_key: str | None = None
+
+    def _now(self) -> float:
+        return (self._clock or time.monotonic)()
+
+    def retry_in(self) -> float:
+        """Seconds until the next connection attempt is allowed (0: now)."""
+        if not self.failures or not self._retry_at:
+            return 0.0
+        return max(0.0, self._retry_at - self._now())
+
+    @property
+    def needs_state_resync(self) -> bool:
+        return self.desired_state is not None and not self.state_confirmed
+
+    def _report(self, key: str, text: str) -> None:
+        """One observable line per change; every failure is its own line."""
+        if key == self.status_key and key != "unavailable":
+            return
+        self.status_key = key
+        print("Cast status:", text, flush=True)
+
+    def _record_failure(self, kind: str) -> None:
+        self.failures += 1
+        delay = 0.0 if self.failures <= 1 else min(
+            CONNECT_BACKOFF_CAP_SECONDS, float(2 ** (self.failures - 1)))
+        self._retry_at = self._now() + delay if delay else 0.0
+        when = f"next attempt in {delay:.0f}s" if delay else "one retry now"
+        self._report("unavailable", f"unavailable ({kind}), {self.failures} failure(s) in a row; {when}")
+
+    def _record_success(self) -> None:
+        self._session_had_receiver = True
+        if self.failures or self.status_key != "connected":
+            self._report("connected", "connected; Kaliv receiver acknowledges")
+        self.failures = 0
+        self._retry_at = 0.0
+
+    def _running_app(self) -> str | None:
+        status = getattr(self.cast, "status", None)
+        return getattr(status, "app_id", None) if status is not None else None
+
+    def _transport_alive(self) -> bool:
+        client = getattr(self.cast, "socket_client", None)
+        return bool(getattr(client, "is_connected", True))
 
     def connect(self):
-        import pychromecast
-        from pychromecast.controllers import BaseController
-
+        """Open the Cast socket and register the Kaliv channel. Never launches."""
         if self.cast is not None:
             return
-        cast = pychromecast.get_chromecast_from_host((self.host, 8009, None, None, None))
+        wait = self.retry_in()
+        if wait > 0:
+            raise CastUnavailable(
+                f"Cast backing off {wait:.0f}s after {self.failures} failures")
+        cast = None
         try:
+            import pychromecast
+            from pychromecast.controllers import BaseController
+
+            cast = pychromecast.get_chromecast_from_host((self.host, 8009, None, None, None))
             cast.wait(timeout=15)
             inbound = self.acks
 
@@ -341,19 +424,28 @@ class CastSender:
             if not callable(register):
                 register = cast.socket_client.register_handler
             register(controller)
-            if not cast.status or cast.status.app_id != self.app_id:
-                cast.start_app(self.app_id)
-                time.sleep(3)
             self.cast = cast
             self.controller = controller
-        except Exception:
+        except Exception as exc:
             # PyChromecast's disconnect can itself fail after a broken socket.
             # Never replace the original launch/register error with cleanup.
-            try:
-                cast.disconnect()
-            except Exception:
-                pass
+            if cast is not None:
+                try:
+                    cast.disconnect()
+                except Exception:
+                    pass
+            self._record_failure(type(exc).__name__)
             raise
+
+    def _launch_receiver(self, previous_app: str | None) -> None:
+        self._report("launching", f"starting Kaliv receiver (Hub app was {previous_app or 'none'})")
+        try:
+            self.cast.start_app(self.app_id)
+        except Exception as exc:
+            self._record_failure(type(exc).__name__)
+            raise
+        # The receiver page needs a moment before its message listener runs.
+        time.sleep(self.launch_settle_seconds)
 
     def disconnect(self):
         # Reset the transport *before* disconnecting its socket: callbacks
@@ -362,6 +454,7 @@ class CastSender:
         self.cast = None
         self.controller = None
         self.correlated_acks = False
+        self._session_had_receiver = False
         self.acks = queue.Queue(maxsize=64)
         if cast is not None:
             try:
@@ -370,25 +463,74 @@ class CastSender:
                 # Never mask the original Cast delivery/retry failure.
                 pass
 
-    def send(self, payload: dict) -> None:
-        # Reject unknown commands without launching a Cast app or opening a
-        # network connection.
+    @staticmethod
+    def _expectation(payload: dict):
+        """The ACK that completes ``payload``; ValueError before any network."""
         command = payload.get("type")
         if command == "SHOW_MESSAGE":
-            expected_type, expected_result = "KALIV_DISPLAY", "shown"
             def matching(ack):
                 return ack.get("length") == utf16_units(payload["text"])
-        elif command == "SET_STATE":
-            expected_type, expected_result = "KALIV_STATE", "updated"
+            return "KALIV_DISPLAY", "shown", matching
+        if command == "SET_STATE":
             def matching(ack):
                 return ack.get("state") == payload["state"]
-        elif command == "CLEAR_MESSAGE":
-            expected_type, expected_result = "KALIV_DISPLAY", "cleared"
-            def matching(ack):
-                return True
-        else:
-            raise ValueError("Unsupported Cast display command")
+            return "KALIV_STATE", "updated", matching
+        if command == "CLEAR_MESSAGE":
+            return "KALIV_DISPLAY", "cleared", lambda ack: True
+        raise ValueError("Unsupported Cast display command")
+
+    def send(self, payload: dict) -> bool:
+        """Send one display command and wait for its ACK.
+
+        Returns False only when the Kaliv receiver is not running and the
+        command was idle/clear: there is nothing of ours to reset, and the
+        launch rule (class docstring) forbids starting the receiver for it.
+        """
+        # Reject unknown commands without launching a Cast app or opening a
+        # network connection.
+        self._expectation(payload)
+        command = payload["type"]
+        may_launch = command == "SET_STATE" and payload.get("state") != "idle"
         self.connect()
+        if self.cast is not None and not self._transport_alive():
+            # PyChromecast lost the socket. Start over rather than reuse a
+            # session whose callbacks could belong to the old receiver.
+            self._report("reconnecting", "Cast socket lost; opening a fresh session")
+            self.disconnect()
+            self.connect()
+        if self.cast is not None:
+            running = self._running_app()
+            if running != self.app_id:
+                if command == "SHOW_MESSAGE":
+                    # Never relaunch between THINKING and the reply: the new
+                    # receiver would show it without the turn that led to it.
+                    raise ReceiverGone("Kaliv receiver stopped before the reply; not shown")
+                if not may_launch:
+                    if command == "SET_STATE":
+                        # A receiver that starts later starts idle.
+                        self.desired_state, self.state_confirmed = "idle", True
+                    self._report("receiver_absent",
+                                 f"Kaliv receiver not running (Hub app {running or 'none'}); nothing to reset")
+                    return False
+                if self._session_had_receiver:
+                    # Our receiver was closed during this session: fresh session.
+                    self.disconnect()
+                    self.connect()
+                    running = self._running_app()
+                if running != self.app_id:
+                    self._launch_receiver(running)
+        if command == "CLEAR_MESSAGE" and self.needs_state_resync:
+            # The last SET_STATE was lost (e.g. the idle reset after a reply).
+            # Re-send it first so the Hub does not keep saying "Kaliv tænker…".
+            self._transmit({"type": "SET_STATE", "state": self.desired_state})
+        self._transmit(payload)
+        return True
+
+    def _transmit(self, payload: dict) -> None:
+        expected_type, expected_result, matching = self._expectation(payload)
+        is_state = payload["type"] == "SET_STATE"
+        if is_state and payload["state"] in DISPLAY_STATES:
+            self.desired_state, self.state_confirmed = payload["state"], False
         while True:
             try:
                 self.acks.get_nowait()
@@ -398,8 +540,12 @@ class CastSender:
         # receiver does; once observed, never downgrade the process back to
         # accepting ambiguous legacy ACKs.
         request_id = uuid.uuid4().hex
-        self.controller.send_message({**payload, "request_id": request_id})
-        deadline = time.monotonic() + 6
+        try:
+            self.controller.send_message({**payload, "request_id": request_id})
+        except Exception as exc:
+            self._record_failure(type(exc).__name__)
+            raise
+        deadline = time.monotonic() + self.ack_timeout
         while time.monotonic() < deadline:
             try:
                 ack = self.acks.get(timeout=min(0.25, max(0.01, deadline - time.monotonic())))
@@ -419,12 +565,25 @@ class CastSender:
                 continue
             if (ack.get("type") == expected_type
                     and ack.get("result") == expected_result and matching(ack)):
+                if is_state and payload["state"] == self.desired_state:
+                    self.state_confirmed = True
+                self._record_success()
                 return
+        # A receiver that never answers is backed off like an unreachable Hub.
+        self._record_failure("ack_timeout")
         raise TimeoutError("Cast acknowledgement missing")
 
-    def clear_message(self) -> None:
-        """Use the receiver's existing CLEAR_MESSAGE command and require ACK."""
-        self.send({"type": "CLEAR_MESSAGE"})
+    def clear_message(self) -> bool:
+        """Use the receiver's existing CLEAR_MESSAGE command and require ACK.
+
+        False: the receiver is no longer running, so nothing was on screen.
+        """
+        return self.send({"type": "CLEAR_MESSAGE"})
+
+    def _settle_on_idle(self) -> None:
+        """After an abandoned reply the Hub should rest at idle, not THINKING."""
+        if not (self.desired_state == "idle" and self.state_confirmed):
+            self.desired_state, self.state_confirmed = "idle", False
 
     def show_answer(self, text: str, expires_at: float | None = None):
         """Attempt SHOW_MESSAGE at most once per completed reply.
@@ -434,6 +593,13 @@ class CastSender:
         attempted: that could replay a private response or flash old content.
         A transient failure *before* display may be retried once.
         """
+        try:
+            self._show_answer(text, expires_at)
+        except Exception:
+            self._settle_on_idle()
+            raise
+
+    def _show_answer(self, text: str, expires_at: float | None):
         for attempt in range(2):
             if expires_at is not None and time.monotonic() >= expires_at:
                 raise ExpiredReply("Display event expired before Cast connection")
@@ -445,7 +611,7 @@ class CastSender:
                 # Reserve the full SHOW_MESSAGE ACK window. A message that
                 # would almost certainly complete after the 30-second display
                 # deadline is safer dropped than shown late.
-                if expires_at is not None and time.monotonic() + 6 >= expires_at:
+                if expires_at is not None and time.monotonic() + self.ack_timeout >= expires_at:
                     raise ExpiredReply("Display event too close to expiry for Cast ACK")
                 display_attempted = True
                 self.send({"type": "SHOW_MESSAGE", "text": text})
@@ -467,6 +633,11 @@ class CastSender:
                         self.send({"type": "SET_STATE", "state": "idle"})
                     except Exception:
                         pass
+                self.disconnect()
+                raise
+            except CastUnavailable:
+                # Backing off: nothing was sent, and a retry now would only be
+                # refused again.
                 self.disconnect()
                 raise
             except Exception:
@@ -533,8 +704,10 @@ def _display_worker_loop(pending: queue.Queue, sender, clear_after_seconds: floa
             if clear_at is None or time.monotonic() < clear_at:
                 continue
             try:
-                sender.clear_message()
-                print("Expired display cleared on Cast", flush=True)
+                if sender.clear_message() is False:
+                    print("Cast receiver no longer running; nothing to clear", flush=True)
+                else:
+                    print("Expired display cleared on Cast", flush=True)
             except Exception as exc:
                 sender.disconnect()
                 print("Cast display clear failed:", type(exc).__name__, flush=True)

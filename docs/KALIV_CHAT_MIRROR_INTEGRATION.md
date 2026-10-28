@@ -22,6 +22,32 @@ Receiver (`mic-diagnostic.html`) og afsendere (`tools/kalivhub_mirror_server.py`
 - **Ukendte kommandoer (nyt):** de ignoreres ikke længere. De besvares med `KALIV_ERROR` / `unknown_command`, så en forskel i protokolversion kan skelnes fra en tabt besked.
 - **Mikrofon:** indgår ikke i protokollen. Mikrofon-diagnosen findes stadig, men `getUserMedia` har givet `NotFoundError` på Nest Hub.
 
+## Forbindelse, genstart og pause efter fejl (`CastSender`)
+
+Testet offline mod en falsk Hub i `tests/test_cast_sender_reconnect.py`. Det er **ikke** verificeret på den fysiske Nest Hub endnu.
+
+- **Kun et nyt svar må starte receiveren.** `SET_STATE thinking` starter Kaliv-receiveren, hvis Hubben kører noget andet. Riggen skriver, hvilken app-ID den erstattede.
+  - `idle` og `CLEAR_MESSAGE` starter den aldrig. Kører receiveren ikke længere, er der intet af vores på skærmen at nulstille.
+  - Før denne ændring ville PyChromecast 14 selv starte receiveren ved enhver afsendelse. En automatisk rydning kunne derfor tage Hubben fra fx YouTube bare for at rydde en besked, der ikke længere var synlig.
+- **Svaret vises aldrig i en receiver, der er genstartet efter `thinking`.** Lukkes receiveren mellem `thinking` og `SHOW_MESSAGE`, opgives svaret i stedet for at blive vist uden for sin tur. Fejlen hedder `ReceiverGone`.
+- **Ny session efter tab.** Er receiveren lukket siden sidste svar, eller har PyChromecast mistet socket'en, lukkes den gamle session, og der åbnes en ny. Gamle callbacks kan derfor ikke kvittere for nye kommandoer.
+- **Pause efter fejl.** Den første fejl giver stadig det ene genforsøg før visning. Derefter venter riggen 2, 4, 8 og 16 sekunder og til sidst højst 30 sekunder mellem forsøgene. Pausen gælder både en utilgængelig Hub og en receiver, der ikke kvitterer.
+  - Mens riggen holder pause, afvises et svar straks med `CastUnavailable`, uden netværkskald.
+  - Ét kvitteret svar nulstiller tælleren.
+- **Seneste tilstand sendes igen.** Går `idle` tabt efter et vist svar, kan Hubben blive ved med at vise "Kaliv tænker…". Riggen husker det, og ved næste rydning sender den `idle` igen før `CLEAR_MESSAGE`.
+  - Selve svaret sendes aldrig igen.
+  - Uden automatisk rydning retter næste svar tilstanden.
+  - Der kører bevidst ingen baggrundsgenopkobling. Den ville kunne holde nye svar tilbage i op til 15 sekunder, og den kunne starte receiveren uopfordret.
+- **Statuslinjer.** Hver overgang logges som én linje med `Cast status: …`:
+  - `connected`
+  - `unavailable (…)` med antal fejl og hvornår næste forsøg må ske
+  - `starting Kaliv receiver (Hub app was …)`
+  - `Cast socket lost`
+  - `Kaliv receiver not running; nothing to reset`
+
+  `GET /healthz` er uændret og siger stadig kun noget om HTTP.
+- **Åbent, skal ses på den fysiske Hub:** hvilken app-ID Nest Hub melder i hvile, og om et Kaliv-svar skal måtte afbryde musik eller video. I dag gør det det, ligesom før. Statuslinjen med den erstattede app-ID er lavet for at kunne afgøre det ud fra en observation.
+
 ## Test, når riggen tændes igen
 
 **1. Opdater KalivHub-testbranchen.**
@@ -128,6 +154,8 @@ Send derefter to normale chatbeskeder, og prøv gerne cloud, retry og færdig st
 | HTTP `401` | Forkert spejlingsnøgle, signatur eller urforskel over 60 sekunder | Kontrollér riggens og telefonens automatiske urindstilling samt nøjagtig nøgle; læg ikke nøglen i logs/chat |
 | HTTP `400`, `408`, `410`, `413` eller `503` | Ugyldigt/ufuldstændigt, for gammelt, for stort eller købegrænset event | Se statusforklaringerne nedenfor; lad være med at øge grænserne uden konkret årsag |
 | HTTP `202`, men ingen `Cast display acknowledgement received` | Modtageren har køet, men Cast er ikke bekræftet | Kontrollér TCP 8009 med `-CheckCast` og bekræft at Cast App ID starter **visningsreceiveren** i stedet for dashboardet; lad `-StrictAcks` være slået fra på gammel deployment |
+| `Cast status: unavailable (…)` og derefter `Cast mirror failed: CastUnavailable` | Hubben svarer ikke, og riggen holder pause mellem forsøg (højst 30 s) | Tjek at Hubben er tændt og på samme net, og kør `-CheckCast`. Ét kvitteret svar nulstiller pausen. Genstart ikke riggen for at "tvinge" den |
+| `Cast status: starting Kaliv receiver (Hub app was …)` ved hvert svar | Noget andet tager Hubben mellem svarene | Notér app-ID'et. Det bruges til at afgøre, om svar fremover skal afbryde andre apps |
 | Cast ACK, men ingen synlig tekst | Cast svarer, men fysisk visning er ikke accepteret | Tjek den rigtige Nest Hub-skærm, receiverens faktiske visning og om indholdet allerede er ryddet |
 | Normal Kaliv-chat virker, men intet spejles | Spejling er en frivillig sidekanal | Kontrollér om den **separate** testapp er parret/aktiveret, og at du tester et færdigt assistentsvar |
 
@@ -144,7 +172,7 @@ Send derefter to normale chatbeskeder, og prøv gerne cloud, retry og færdig st
 - `GET /healthz` kontrollerer kun, at HTTP-modtageren kører, **ikke** Cast-status.
 - `401`: HMAC eller ur passer ikke. `409`: event-ID er allerede modtaget. `410`: signeret besked er allerede 30 sekunder gammel, før den kan køes. `503`: køen eller replay-cache er fuld. `408`: HTTP-body blev ikke modtaget inden den samlede tidsfrist på 5 sekunder. `400`: tvetydige headers, dublerede JSON-felter eller andet ugyldigt input. `413`: ugyldig eller for stor `Content-Length`.
 - Hvis DPAPI-nøglen ikke kan dekrypteres, fejler starteren bevidst frem for stille at generere en ny. Re-pair Android efter en bevidst nøglerotation.
-- Lokal Python-kontrakttest: `py -m unittest discover -s tests -p test_kalivhub_mirror_server.py -v`.
+- Lokale Python-tests: `py -m unittest discover -s tests -p test_kalivhub_mirror_server.py -v` og `py -m unittest discover -s tests -p test_cast_sender_reconnect.py -v`.
 - Ingen merge eller produktion før komplet CI og fysisk test gennem **Android → rig → Cast → Nest Hub**.
 
 Den ældre `tools/modelrig_cast_bridge.py` er fortsat til frivillig PowerShell-diagnostik og er ikke en del af den automatiske Android-spejling.

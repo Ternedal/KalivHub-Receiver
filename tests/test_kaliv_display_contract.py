@@ -16,7 +16,9 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
 
-from kalivhub_mirror_server import CastSender, MAX_DISPLAY_UNITS, NAMESPACE, utf16_units  # noqa: E402
+from kalivhub_mirror_server import (  # noqa: E402
+    CastSender, DISPLAY_STATES, MAX_DISPLAY_UNITS, NAMESPACE, utf16_units,
+)
 
 CONTRACT = json.loads((ROOT / "protocol" / "kaliv-display-v1.json").read_text(encoding="utf-8"))
 SENDERS = ("kalivhub_mirror_server.py", "modelrig_cast_bridge.py", "remote_mic_probe.py")
@@ -57,6 +59,10 @@ class TestConstantsMatchContract(unittest.TestCase):
     def test_namespace_and_limit(self):
         self.assertEqual(NAMESPACE, CONTRACT["namespace"])
         self.assertEqual(MAX_DISPLAY_UNITS, CONTRACT["max_text_utf16_units"])
+
+    def test_sender_state_list_is_the_contract_state_list(self):
+        # CastSender re-sends only states it knows; they must be the contract's.
+        self.assertEqual(list(DISPLAY_STATES), CONTRACT["states"])
 
     def test_every_sender_uses_the_contract_namespace(self):
         for name in SENDERS:

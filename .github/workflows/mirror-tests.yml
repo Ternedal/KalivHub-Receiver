@@ -7,6 +7,7 @@ on:
       - tools/remote_mic_probe.py
       - protocol/**
       - tests/test_kaliv_display_contract.py
+      - tests/test_cast_sender_reconnect.py
       - tools/start-kalivhub-mirror.ps1
       - tools/test-kalivhub-readiness.ps1
       - tools/set-kalivhub-firewall.ps1
@@ -22,6 +23,7 @@ on:
       - tools/remote_mic_probe.py
       - protocol/**
       - tests/test_kaliv_display_contract.py
+      - tests/test_cast_sender_reconnect.py
       - tools/start-kalivhub-mirror.ps1
       - tools/test-kalivhub-readiness.ps1
       - tools/set-kalivhub-firewall.ps1
@@ -66,12 +68,17 @@ jobs:
           assert callable(pychromecast.Chromecast.disconnect)
           assert callable(BaseController.send_message)
           assert "supporting_app_id" in inspect.signature(BaseController.__init__).parameters
+          # CastSender opens a fresh session when the socket is lost.
+          assert isinstance(SocketClient.is_connected, property)
+          assert isinstance(pychromecast.Chromecast.app_id, property)
           print("PASS: KalivHub Cast sender APIs available in installed PyChromecast")
           PY
       - name: Run offline security and HTTP contract tests
         run: python -m unittest discover -s tests -p test_kalivhub_mirror_server.py -v
       - name: Check senders against the Kaliv display protocol
         run: python -m unittest discover -s tests -p test_kaliv_display_contract.py -v
+      - name: Check Cast launch, reconnect and backoff against a fake Hub
+        run: python -m unittest discover -s tests -p test_cast_sender_reconnect.py -v
 
   windows-launcher-syntax:
     runs-on: windows-latest
@@ -89,6 +96,9 @@ jobs:
       - name: Check senders against the Kaliv display protocol on Windows
         shell: pwsh
         run: python -m unittest discover -s tests -p test_kaliv_display_contract.py -v
+      - name: Check Cast launch, reconnect and backoff on Windows
+        shell: pwsh
+        run: python -m unittest discover -s tests -p test_cast_sender_reconnect.py -v
       - name: Validate DPAPI PowerShell launcher parses safely
         shell: pwsh
         run: |
