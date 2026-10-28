@@ -6,6 +6,7 @@ on:
     # PR and push trigger the same relevant source paths.
     paths:
       - 'mic-diagnostic.html'
+      - 'protocol/**'
       - 'tests/mic-probe-*.cjs'
       - 'tests/test_mic_probe_launcher.py'
       - 'tools/launch_mic_probe.py'
@@ -14,6 +15,7 @@ on:
   pull_request:
     paths:
       - 'mic-diagnostic.html'
+      - 'protocol/**'
       - 'tests/mic-probe-*.cjs'
       - 'tests/test_mic_probe_launcher.py'
       - 'tools/launch_mic_probe.py'
@@ -42,6 +44,7 @@ jobs:
           node tests/mic-probe-manual-stop.cjs
           node tests/mic-probe-stale-meter.cjs
           node tests/mic-probe-suspended-audio.cjs
+          node tests/mic-probe-kaliv-contract.cjs
       - name: Check Python Cast launcher
         run: |
           python -m compileall -q tools/launch_mic_probe.py tests/test_mic_probe_launcher.py

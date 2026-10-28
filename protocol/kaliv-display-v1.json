@@ -1,0 +1,22 @@
+{
+  "format": "kaliv-display-protocol",
+  "version": 1,
+  "namespace": "urn:x-cast:com.kalivhub.micprobe",
+  "request_id_pattern": "^[a-f0-9]{32}$",
+  "max_text_utf16_units": 2000,
+  "states": ["idle", "listening", "thinking", "speaking", "offline", "error"],
+  "commands": {
+    "SET_STATE": {"fields": {"state": "one of states"}, "ack": "KALIV_STATE", "results": ["updated", "invalid"]},
+    "SHOW_MESSAGE": {"fields": {"text": "string, at most max_text_utf16_units"}, "ack": "KALIV_DISPLAY", "results": ["shown", "invalid"]},
+    "CLEAR_MESSAGE": {"fields": {}, "ack": "KALIV_DISPLAY", "results": ["cleared"]},
+    "GET_DISPLAY_STATUS": {"fields": {}, "ack": "KALIV_STATUS", "results": ["ok"]},
+    "SHOW_DIAGNOSTICS": {"fields": {"visible": "boolean"}, "ack": "KALIV_DIAGNOSTICS", "results": ["updated"]}
+  },
+  "diagnostic_commands": ["PROBE_CONSTRAINTS", "GET_DEVICES", "GET_STATUS", "START_MIC_TEST", "STOP_MIC_TEST"],
+  "unknown_command_ack": {"type": "KALIV_ERROR", "result": "unknown_command"},
+  "notes": [
+    "Every ACK echoes request_id when the command carried a valid one; legacy senders that omit it get uncorrelated ACKs.",
+    "KALIV_STATUS carries protocol, state, has_message and length (UTF-16 units of the shown text).",
+    "Microphone capture is NOT part of this protocol: on Nest Hub getUserMedia has returned NotFoundError (docs/KALIV_CHAT_MIRROR_INTEGRATION.md)."
+  ]
+}

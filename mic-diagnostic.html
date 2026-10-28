@@ -18,6 +18,7 @@ body{max-width:960px;margin:0 auto;padding:28px;background:radial-gradient(ellip
 const $=id=>document.getElementById(id);
 const NS='urn:x-cast:com.kalivhub.micprobe';
 let receiver=null;
+let displayState='idle',shownLength=0;
 const report=(type,data={})=>{try{if(receiver)receiver.sendCustomMessage(NS,undefined,{type,...data})}catch(err){log('Cast-sendefejl',err?.name||'Ukendt')}};
 let stream=null,ctx=null,analyser=null,source=null,raf=0,timeout=0,generation=0,peak=0,frames=0;
 const log=(label,value)=>{$('status').textContent+=label+': '+String(value)+'\n'};
@@ -82,10 +83,12 @@ try {
       const requestId=event?.data?.request_id;
       const ack=(kind,data={})=>report(kind,typeof requestId==='string'&&/^[a-f0-9]{32}$/.test(requestId)?{...data,request_id:requestId}:data);
       if(type==='SET_STATE'){
-        const states={idle:'Kaliv er klar',thinking:'Kaliv tænker…',speaking:'Kaliv taler…',listening:'Kaliv lytter…',offline:'Kaliv er offline'};
+        // Kaliv display protocol v1 (protocol/kaliv-display-v1.json).
+        const states={idle:'Kaliv er klar',thinking:'Kaliv tænker…',speaking:'Kaliv taler…',listening:'Kaliv lytter…',offline:'Kaliv er offline',error:'Kaliv · fejl – se riggen'};
         const state=event?.data?.state;
         if(typeof state!=='string'||!Object.prototype.hasOwnProperty.call(states,state)){ack('KALIV_STATE',{result:'invalid'});return}
         $('kaliv-state').textContent=states[state];
+        displayState=state;
         ack('KALIV_STATE',{result:'updated',state});
       }
       else if(type==='SHOW_DIAGNOSTICS'){
@@ -97,13 +100,16 @@ try {
         if(typeof message!=='string'||message.length>2000){ack('KALIV_DISPLAY',{result:'invalid'});return}
         $('kaliv-message').textContent=message;
         $('kaliv-state').textContent='Kaliv · besked modtaget';
+        shownLength=message.length;
         ack('KALIV_DISPLAY',{result:'shown',length:message.length});
       }
       else if(type==='CLEAR_MESSAGE'){
         $('kaliv-message').textContent='Venter på besked fra riggen…';
         $('kaliv-state').textContent='Kaliv er klar';
+        shownLength=0;displayState='idle';
         ack('KALIV_DISPLAY',{result:'cleared'});
       }
+      else if(type==='GET_DISPLAY_STATUS')ack('KALIV_STATUS',{result:'ok',protocol:1,state:displayState,has_message:shownLength>0,length:shownLength});
       else if(type==='PROBE_CONSTRAINTS'){
         const media=navigator.mediaDevices;
         if(typeof media?.enumerateDevices!=='function'||typeof media?.getUserMedia!=='function'){
@@ -137,6 +143,9 @@ try {
       else if(type==='GET_STATUS')report('MIC_STATUS',{secure:window.isSecureContext,api:typeof navigator.mediaDevices?.getUserMedia,active:Boolean(stream),frames,peak});
       else if(type==='START_MIC_TEST'){report('MIC_STATUS',{result:'start_requested'});$('start').click()}
       else if(type==='STOP_MIC_TEST'){void stop();report('MIC_STATUS',{result:'stop_requested'})}
+      // Never drop a command silently: an unknown type is reported, so a sender can tell a
+      // protocol mismatch from a lost message.
+      else ack('KALIV_ERROR',{result:'unknown_command'});
     });
     const options=new window.cast.framework.CastReceiverOptions();
     options.disableIdleTimeout=true;

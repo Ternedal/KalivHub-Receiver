@@ -3,6 +3,10 @@ on:
   pull_request:
     paths:
       - tools/kalivhub_mirror_server.py
+      - tools/modelrig_cast_bridge.py
+      - tools/remote_mic_probe.py
+      - protocol/**
+      - tests/test_kaliv_display_contract.py
       - tools/start-kalivhub-mirror.ps1
       - tools/test-kalivhub-readiness.ps1
       - tools/set-kalivhub-firewall.ps1
@@ -14,6 +18,10 @@ on:
     branches: [test/nest-hub-microphone-probe]
     paths:
       - tools/kalivhub_mirror_server.py
+      - tools/modelrig_cast_bridge.py
+      - tools/remote_mic_probe.py
+      - protocol/**
+      - tests/test_kaliv_display_contract.py
       - tools/start-kalivhub-mirror.ps1
       - tools/test-kalivhub-readiness.ps1
       - tools/set-kalivhub-firewall.ps1
@@ -62,6 +70,8 @@ jobs:
           PY
       - name: Run offline security and HTTP contract tests
         run: python -m unittest discover -s tests -p test_kalivhub_mirror_server.py -v
+      - name: Check senders against the Kaliv display protocol
+        run: python -m unittest discover -s tests -p test_kaliv_display_contract.py -v
 
   windows-launcher-syntax:
     runs-on: windows-latest
@@ -76,6 +86,9 @@ jobs:
         run: |
           python -m py_compile tools/kalivhub_mirror_server.py
           python -m unittest discover -s tests -p test_kalivhub_mirror_server.py -v
+      - name: Check senders against the Kaliv display protocol on Windows
+        shell: pwsh
+        run: python -m unittest discover -s tests -p test_kaliv_display_contract.py -v
       - name: Validate DPAPI PowerShell launcher parses safely
         shell: pwsh
         run: |

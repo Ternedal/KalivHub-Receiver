@@ -12,6 +12,16 @@
 - Receiver JavaScript, mikrofon-diagnostik, mirror-protokoltests, Cast HTML-kontrakttests samt Windows-readiness-kontrol: **PASS** på commit `4eb11fd`, alle tre workflows. [Receiverens CI-kørsler](https://github.com/Ternedal/KalivHub-Receiver/pull/3/checks).
 - Ingen merge til `main`; ingen produktions-APK er ændret.
 
+## Visningsprotokol v1 (`protocol/kaliv-display-v1.json`)
+
+Receiver (`mic-diagnostic.html`) og afsendere (`tools/kalivhub_mirror_server.py`, `tools/modelrig_cast_bridge.py`, `tools/remote_mic_probe.py`) følger én fælles kontrakt. Begge sider testes mod den samme fil: `tests/mic-probe-kaliv-contract.cjs` for receiveren og `tests/test_kaliv_display_contract.py` for afsenderne.
+
+- **Tilstande:** `idle`, `listening`, `thinking`, `speaking`, `offline` og den nye `error` ("Kaliv · fejl – se riggen").
+- **Visning:** `SHOW_MESSAGE` tager højst 2000 UTF-16-enheder. Desuden findes `CLEAR_MESSAGE`. Hver kommando får en ACK, og ACK'en gentager et gyldigt `request_id`.
+- **Status (nyt):** `GET_DISPLAY_STATUS` svarer med `KALIV_STATUS`, som indeholder `protocol`, `state`, `has_message` og `length`. Så kan afsenderen se, hvad Nest Hub faktisk viser.
+- **Ukendte kommandoer (nyt):** de ignoreres ikke længere. De besvares med `KALIV_ERROR` / `unknown_command`, så en forskel i protokolversion kan skelnes fra en tabt besked.
+- **Mikrofon:** indgår ikke i protokollen. Mikrofon-diagnosen findes stadig, men `getUserMedia` har givet `NotFoundError` på Nest Hub.
+
 ## Test, når riggen tændes igen
 
 **1. Opdater KalivHub-testbranchen.**
