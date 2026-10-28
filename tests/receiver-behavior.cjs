@@ -2,9 +2,13 @@ const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/st
 const html=fs.readFileSync('index.html','utf8');
 const script=[...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/gi)].map(x=>x[1]).find(x=>x.trim());
 assert.ok(script,'inline script exists');
+// Seed each nav button's <small> with its text from index.html, as a real DOM would.
+// Without this the harness starts every label empty and cannot tell "left alone" from "cleared".
+const initialSmall=Object.fromEntries([...html.matchAll(/<button id="([^"]+)"[^>]*>(?:(?!<\/button>)[\s\S])*?<small>([^<]*)<\/small>/g)].map(m=>[m[1],m[2]]));
+assert.equal(initialSmall.devices,'Kun visning','harness reads the initial devices label from index.html');
 function element(id='',tagName='DIV'){
  const attributes={};const el={id,tagName,children:[],dataset:{},className:'',textContent:'',onclick:null,onkeydown:null,style:{},classList:{_v:new Set(),add(x){this._v.add(x)},remove(x){this._v.delete(x)},contains(x){return this._v.has(x)}},
- setAttribute(k,v){attributes[k]=v},getAttribute(k){return attributes[k]||null},append(...xs){this.children.push(...xs)},replaceChildren(...xs){this.children=xs},getClientRects(){return []},getBoundingClientRect(){return {left:0,right:0,top:0,bottom:0}},click(){this.onclick?.()},querySelector(){return this.small||(this.small=element('small'))}};return el;
+ setAttribute(k,v){attributes[k]=v},getAttribute(k){return attributes[k]||null},append(...xs){this.children.push(...xs)},replaceChildren(...xs){this.children=xs},getClientRects(){return []},getBoundingClientRect(){return {left:0,right:0,top:0,bottom:0}},click(){this.onclick?.()},querySelector(){return this.small||(this.small=Object.assign(element('small'),{textContent:initialSmall[id]||''}))}};return el;
 }
 function harness(){
  const ids=new Map();const get=id=>{if(!ids.has(id))ids.set(id,element(id));return ids.get(id)};
@@ -18,7 +22,8 @@ function harness(){
 }
 {
  const h=harness();h.receive({type:'control_capabilities',version:1,enabled:true});assert.equal(h.get('devices').querySelector('small').textContent,'Kun visning','capabilities alone cannot enable controls');
- h.snapshot(1);h.receive({type:'control_capabilities',version:1,enabled:true});assert.equal(h.get('tiles').children[0].getAttribute('role'),'button');
+ h.snapshot(1);assert.notEqual(h.get('tiles').children[0].getAttribute('role'),'button','capabilities sent before any snapshot do not carry over');assert.equal(h.get('devices').querySelector('small').textContent,'Kun visning');
+ h.receive({type:'control_capabilities',version:1,enabled:true});assert.equal(h.get('tiles').children[0].getAttribute('role'),'button');
  h.get('tiles').children[0].click();assert.equal(h.sent.length,1);assert.equal(h.sent[0].data.action,'turn_on');
  h.get('tiles').children[0].click();assert.equal(h.sent.length,1,'repeated tap suppressed');
  h.snapshot(2,'session1234','on');h.get('tiles').children[0].click();assert.equal(h.sent.length,2,'confirmed state permits next tap');assert.equal(h.sent[1].data.action,'turn_off');
@@ -75,7 +80,7 @@ function harness(){
 }
 {
  const h=harness();h.snapshot(1);
- h.receive({type:'snapshot',version:1,session_id:'session1234',sequence:2,entities:[{entity_id:'light.kitchen',name:'Bad\\u0085Name',state:'on'}]});
+ h.receive({type:'snapshot',version:1,session_id:'session1234',sequence:2,entities:[{entity_id:'light.kitchen',name:'Bad\u0085Name',state:'on'}]});
  assert.equal(h.get('tiles').children[0].children[1].textContent,'off','C1 control character rejected');
  h.snapshot(2,'session1234','on');
  assert.equal(h.get('tiles').children[0].children[1].textContent,'on','rejected text does not advance sequence');
