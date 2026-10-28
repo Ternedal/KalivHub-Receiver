@@ -16,3 +16,4 @@ jobs:
           node tests/receiver-syntax.cjs
           node tests/receiver-static.cjs
           node tests/receiver-behavior.cjs
+          node tests/receiver-voice.cjs

@@ -40,6 +40,22 @@ Example sender payload:
 
 The receiver does **not** authenticate the sender itself; Cast session access is managed by the Cast platform. Keep sensitive entities out of the sender allowlist. A browser preview loading the Cast SDK is not evidence of a successful physical Nest Hub Cast session.
 
+### Voice display messages
+
+The Kaliv Android app (ModelRig #2299) can send `kaliv_voice_status` and `kaliv_voice_text` on the same namespace. HA snapshots may come from another sender, the PC mirror, at the same time. Decision: Receiver #8 comment 6480304891.
+
+- **Display only.** Voice never grants HA control rights, and it never reads or changes the snapshot or control sender binding.
+- **Message validation:**
+  - `version: 1`;
+  - `session_id` matching `^[A-Za-z0-9_-]{8,64}$`;
+  - a 36-character hex/dash `message_id`;
+  - `phase` is one of `listening`, `thinking`, `speaking`, `idle`, `error`;
+  - text needs `role` `user` or `assistant`, and is non-blank and at most 4000 characters, rendered with `textContent`.
+- **Binding:** a valid status binds voice to its sender and session. While bound, other senders are ignored. The same sender may start a new session, and text from the replaced session is dropped. Text before any status is dropped.
+- **Release:** voice is released, and the subtitle reset, when the voice sender disconnects (`SENDER_DISCONNECTED`), or after 5 minutes without a valid voice message. An HA stale connection or an HA sender or session change does not release voice.
+- **Acknowledgements:** `kaliv_voice_ack` is sent only for a message that was validated and shown. It is a display ack, not an audio-playback ack.
+- A Cast sender ID is transport identity, not authentication. Do not send secrets or controls through this channel.
+
 ## Test prerequisites
 
 1. Confirm GitHub Pages is deployed at the URL above.
