@@ -23,15 +23,19 @@ function snapshot(data,sourceSenderId){if(typeof sourceSenderId!=='string'||!sou
 
 // Voice display is separate from HA snapshots and never grants control rights.
 let voiceSession=null;
-function voiceDisplay(data){
+let voiceSenderId=null;
+function voiceDisplay(data, senderId){
  if(!data||data.version!==1||typeof data.session_id!=='string'||!/^[A-Za-z0-9_-]{8,64}$/.test(data.session_id))return;
  if(data.type==='kaliv_voice_status'){
   if(!['listening','thinking','speaking','idle','error'].includes(data.phase))return;
+  if(voiceSenderId!==null&&voiceSenderId!==senderId)return;
+  if(snapshotSenderId!==null&&snapshotSenderId!==senderId)return;
+  voiceSenderId=senderId;
   voiceSession=data.session_id;
   const labels={listening:'Lytter på telefonen',thinking:'Kaliv tænker',speaking:'Kaliv svarer',idle:'Kaliv er klar',error:'Stemmeforbindelsen fejlede'};
   $('subtitle').textContent=labels[data.phase];
  }else if(data.type==='kaliv_voice_text'){
-  if(data.session_id!==voiceSession||!['user','assistant'].includes(data.role)||typeof data.text!=='string'||data.text.length>4000)return;
+  if(senderId!==voiceSenderId||data.session_id!==voiceSession||!['user','assistant'].includes(data.role)||typeof data.text!=='string'||data.text.length>4000)return;
   $('subtitle').textContent=data.text;
  }
 }
@@ -97,6 +101,6 @@ document.addEventListener('touchstart',handleTouch,{capture:true,passive:true});
 document.addEventListener('touchend',handleTouch,{capture:true,passive:true});
 document.addEventListener('pointerdown',handleTouch,{capture:true,passive:true});
 tick();setInterval(tick,5000);
-try{if(!window.cast||!cast.framework)throw Error('Cast SDK unavailable');const ctx=cast.framework.CastReceiverContext.getInstance();castContext=ctx;ctx.addCustomMessageListener(CONTROL_NS,event=>{if(!event||!event.data)return;const data=event.data;if(data&&(data.type==='kaliv_voice_status'||data.type==='kaliv_voice_text')){voiceDisplay(data);return}if(data&&data.type==='control_capabilities'&&data.version===1&&typeof event.senderId==='string'){const fresh=lastSession!==null&&lastMessage>0&&Date.now()-lastMessage<=45000;if(event.senderId!==snapshotSenderId)return;controlsEnabled=data.enabled===true&&fresh;senderId=controlsEnabled?event.senderId:null;$('devices').querySelector('small').textContent=controlsEnabled?'Tryk for at styre':'Kun visning';render();return}snapshot(data,event.senderId)});ctx.start({uiConfig:{touchScreenOptimizedApp:true}});$('connection').textContent='Receiver klar · afventer data'}catch{$('connection').textContent='Cast SDK ikke tilgængeligt'}
+try{if(!window.cast||!cast.framework)throw Error('Cast SDK unavailable');const ctx=cast.framework.CastReceiverContext.getInstance();castContext=ctx;ctx.addCustomMessageListener(CONTROL_NS,event=>{if(!event||!event.data)return;const data=event.data;if(data&&(data.type==='kaliv_voice_status'||data.type==='kaliv_voice_text')){voiceDisplay(data,event.senderId);return}if(data&&data.type==='control_capabilities'&&data.version===1&&typeof event.senderId==='string'){const fresh=lastSession!==null&&lastMessage>0&&Date.now()-lastMessage<=45000;if(event.senderId!==snapshotSenderId)return;controlsEnabled=data.enabled===true&&fresh;senderId=controlsEnabled?event.senderId:null;$('devices').querySelector('small').textContent=controlsEnabled?'Tryk for at styre':'Kun visning';render();return}snapshot(data,event.senderId)});ctx.start({uiConfig:{touchScreenOptimizedApp:true}});$('connection').textContent='Receiver klar · afventer data'}catch{$('connection').textContent='Cast SDK ikke tilgængeligt'}
 })();
 </script></body></html>
