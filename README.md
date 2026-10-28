@@ -49,3 +49,11 @@ The receiver does **not** authenticate the sender itself; Cast session access is
 5. Verify device state display, stale-state timeout, and reconnect behavior on the Nest Hub.
 
 No developer registration, Cast App ID, or Nest Hub session is included in this repository.
+
+
+## Cross-repository documentation (2026-10-23)
+
+- [Kaliv ecosystem and KalivNexus ownership map](docs/KALIV_ECOSYSTEM.md)
+- [Subsystem integration acceptance checklist](docs/INTEGRATION_ACCEPTANCE_2026-10-23.md)
+
+These documents distinguish proposed integrations from implemented, tested and released functionality. They do not supersede this repository's operational instructions or evidence gates.
