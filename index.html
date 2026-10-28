@@ -45,6 +45,14 @@ function voiceDisplay(data, senderId){
  }else if(data.type==='kaliv_voice_text'){
   if(senderId!==voiceSenderId||data.session_id!==voiceSession||!['user','assistant'].includes(data.role)||typeof data.text!=='string'||data.text.length>4000)return;
   $('subtitle').textContent=data.text;
+  // Only acknowledge text after it has passed all validation and been rendered.
+  try{
+   const delivery=castContext?.sendCustomMessage(CONTROL_NS,senderId,{
+    type:'kaliv_voice_ack',version:1,session_id:voiceSession,
+    role:data.role,kind:'text'
+   });
+   if(delivery&&typeof delivery.catch==='function')delivery.catch(()=>{});
+  }catch(_){}
  }
 }
 function requestControl(item){
