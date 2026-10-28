@@ -26,6 +26,7 @@ let voiceSession=null;
 let voiceSenderId=null;
 function voiceDisplay(data, senderId){
  if(!data||data.version!==1||typeof data.session_id!=='string'||!/^[A-Za-z0-9_-]{8,64}$/.test(data.session_id))return;
+ if(typeof data.message_id!=='string'||!/^[0-9a-fA-F-]{36}$/.test(data.message_id))return;
  if(data.type==='kaliv_voice_status'){
   if(!['listening','thinking','speaking','idle','error'].includes(data.phase))return;
   if(voiceSenderId!==null&&voiceSenderId!==senderId)return;
@@ -38,7 +39,7 @@ function voiceDisplay(data, senderId){
   // and has been applied to the display. This is not an audio-playback ack.
   try{
    const delivery=castContext?.sendCustomMessage(CONTROL_NS,senderId,{
-    type:'kaliv_voice_ack',version:1,session_id:voiceSession,phase:data.phase
+    type:'kaliv_voice_ack',version:1,session_id:voiceSession,message_id:data.message_id,phase:data.phase
    });
    if(delivery&&typeof delivery.catch==='function')delivery.catch(()=>{});
   }catch(_){}
@@ -48,7 +49,7 @@ function voiceDisplay(data, senderId){
   // Only acknowledge text after it has passed all validation and been rendered.
   try{
    const delivery=castContext?.sendCustomMessage(CONTROL_NS,senderId,{
-    type:'kaliv_voice_ack',version:1,session_id:voiceSession,
+    type:'kaliv_voice_ack',version:1,session_id:voiceSession,message_id:data.message_id,
     role:data.role,kind:'text'
    });
    if(delivery&&typeof delivery.catch==='function')delivery.catch(()=>{});
