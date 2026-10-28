@@ -20,7 +20,7 @@ Receiver (`mic-diagnostic.html`) og afsendere (`tools/kalivhub_mirror_server.py`
 - **Visning:** `SHOW_MESSAGE` tager højst 2000 UTF-16-enheder. Desuden findes `CLEAR_MESSAGE`. Hver kommando får en ACK, og ACK'en gentager et gyldigt `request_id`.
 - **Status (nyt):** `GET_DISPLAY_STATUS` svarer med `KALIV_STATUS`, som indeholder `protocol`, `state`, `has_message` og `length`. Så kan afsenderen se, hvad Nest Hub faktisk viser.
 - **Ukendte kommandoer (nyt):** de ignoreres ikke længere. De besvares med `KALIV_ERROR` / `unknown_command`, så en forskel i protokolversion kan skelnes fra en tabt besked.
-- **Mikrofon:** indgår ikke i protokollen. Mikrofon-diagnosen findes stadig, men `getUserMedia` har givet `NotFoundError` på Nest Hub.
+- **Mikrofon:** indgår ikke i protokollen. Mikrofon-diagnosen findes stadig, men `getUserMedia` har givet `NotFoundError` på Nest Hub. Hvor lyden så skal komme fra (telefonen nu, evt. en USB-mikrofon på riggen senere), står i [`MIC_FALLBACK_ARCHITECTURE.md`](MIC_FALLBACK_ARCHITECTURE.md).
 
 ## Forbindelse, genstart og pause efter fejl (`CastSender`)
 
