@@ -89,6 +89,14 @@ const MIN=60000;
  assert.equal(h.acks().length,before,'no ack for a rejected message');
  h.text('x'.repeat(4000),'phone');
  assert.equal(h.subtitle().length,4000,'4000 characters is still accepted');
+ // Blank means what the Android sender's Kotlin isBlank() means: it never sends those, and everything it does send is acknowledged.
+ const n=h.acks().length;
+ for(const blank of ['\t\n\r','\u3000','\u00A0\u2007','\u001C\u001F','\u2028\u2029'])h.text(blank,'phone');
+ assert.equal(h.acks().length,n,'Kotlin-blank text (never sent by Android) is rejected');
+ const bom=h.text('\uFEFF','phone');
+ assert.deepEqual(h.acks().slice(-1).map(a=>a.data.message_id),[bom],'U+FEFF is not blank for Kotlin, so the sender sends it: it must be acknowledged, not left to time out');
+ const nel=h.text('\u0085','phone');
+ assert.deepEqual(h.acks().slice(-1).map(a=>a.data.message_id),[nel],'U+0085 is not Kotlin-blank either');
 }
 { // Status rules.
  const h=harness();

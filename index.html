@@ -35,6 +35,10 @@ let voiceSenderId=null;
 let voiceLastMessage=0;
 function releaseVoice(){voiceSenderId=null;voiceSession=null;voiceLastMessage=0;$('subtitle').textContent=subtitleDefault}
 function voiceExpired(){return voiceSenderId!==null&&Date.now()-voiceLastMessage>VOICE_IDLE_MS}
+// Blank exactly as the Android sender's Kotlin String.isBlank() (Char.isWhitespace = Java isWhitespace || isSpaceChar):
+// the sender skips such text, so the receiver must accept everything else, or the sender waits for an ACK
+// that never comes. JS trim() differs (it also strips U+FEFF).
+const SENDER_BLANK=/^[\t\n\u000B\f\r\u001C-\u001F \u00A0\u1680\u2000-\u200A\u2028\u2029\u202F\u205F\u3000]*$/;
 function voiceAck(to,body){
  // Only for a message that passed validation and was applied to the display.
  // A display ack, never an audio-playback ack.
@@ -57,7 +61,7 @@ function voiceDisplay(data,from){
   $('subtitle').textContent=VOICE_LABELS[data.phase];
   voiceAck(from,{message_id:data.message_id,phase:data.phase});
  }else if(data.type==='kaliv_voice_text'){
-  if(from!==voiceSenderId||data.session_id!==voiceSession||!['user','assistant'].includes(data.role)||typeof data.text!=='string'||!data.text.trim()||data.text.length>4000)return;
+  if(from!==voiceSenderId||data.session_id!==voiceSession||!['user','assistant'].includes(data.role)||typeof data.text!=='string'||SENDER_BLANK.test(data.text)||data.text.length>4000)return;
   voiceLastMessage=Date.now();
   $('subtitle').textContent=data.text;
   voiceAck(from,{message_id:data.message_id,role:data.role,kind:'text'});
