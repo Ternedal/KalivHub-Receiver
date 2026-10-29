@@ -28,6 +28,7 @@ jobs:
           node tests/receiver-syntax.cjs
           node tests/receiver-static.cjs
           node tests/receiver-behavior.cjs
+          node tests/receiver-voice.cjs
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
