@@ -86,6 +86,15 @@ function harness(){
  assert.equal(h.get('tiles').children[0].children[1].textContent,'on','rejected text does not advance sequence');
 }
 {
+ // The room has its own control-character check (index.html safe()); without this case
+ // dropping C1 from it went unnoticed (ModelRig #2275 backlog item 26).
+ const h=harness();h.snapshot(1);
+ h.receive({type:'snapshot',version:1,session_id:'session1234',sequence:2,entities:[{entity_id:'light.kitchen',name:'Køkkenlys',state:'on',room:'Bad\u0085Room'}]});
+ assert.equal(h.get('tiles').children[0].children[1].textContent,'off','C1 control character in room rejected');
+ h.snapshot(2,'session1234','on');
+ assert.equal(h.get('tiles').children[0].children[1].textContent,'on','rejected room does not advance sequence');
+}
+{
  const h=harness();h.snapshot(1);h.receive({type:'control_capabilities',version:1,enabled:true});
  h.deferFailure(true);h.get('tiles').children[0].click();
  h.setNow(146000);h.tick();
